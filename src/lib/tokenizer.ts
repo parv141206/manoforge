@@ -48,7 +48,7 @@ function splitTokens(line: string): string[] {
  * Ideally i would have used some library but nevermind, manual labour works for this.
  * @param input The literal raw input of the user
  */
-function tokenize(input: string) {
+export function tokenize(input: string) {
   // getting each line of the input:
   const lines = input.split("\n");
 
@@ -66,7 +66,12 @@ function tokenize(input: string) {
       lineTokens.length === 0 ||
       (lineTokens.length === 1 && lineTokens[0] === "")
     ) {
-      tokens.push({ type: "NEWLINE", value: "\n" });
+      tokens.push({
+        type: "NEWLINE",
+        value: "\n",
+        line: lineNumber + 1,
+        column: 1,
+      });
       continue;
     }
 
@@ -77,36 +82,101 @@ function tokenize(input: string) {
 
       // the most basic, comma check
       if (token === ",") {
-        tokens.push({ type: "COMMA", value: "," });
+        tokens.push({
+          type: "COMMA",
+          value: ",",
+          line: lineNumber + 1,
+          column: i + 1,
+        });
         continue;
       }
 
       // checking if its a data type
       if (upper === "DEC" || upper === "HEX") {
-        tokens.push({ type: "DATATYPE", value: upper });
+        tokens.push({
+          type: "DATATYPE",
+          value: upper,
+          line: lineNumber + 1,
+          column: i + 1,
+        });
         continue;
       }
 
       // checking if its an instruction
       if (upper in OPCODES) {
-        tokens.push({ type: "OPCODE", value: upper });
+        tokens.push({
+          type: "OPCODE",
+          value: upper,
+          line: lineNumber + 1,
+          column: i + 1,
+        });
         continue;
       }
 
       // if its a number (either decimal or hexadecimal)
       if (/^\d+$/.test(token)) {
-        tokens.push({ type: "NUMBER", value: token });
+        tokens.push({
+          type: "NUMBER",
+          value: token,
+          line: lineNumber + 1,
+          column: i + 1,
+        });
         continue;
       }
 
       // otherwise its a label
-      tokens.push({ type: "IDENTIFIER", value: token });
+      tokens.push({
+        type: "IDENTIFIER",
+        value: token,
+        line: lineNumber + 1,
+        column: i + 1,
+      });
     }
 
-    tokens.push({ type: "NEWLINE", value: "\n" });
+    tokens.push({
+      type: "NEWLINE",
+      value: "\n",
+      line: lineNumber + 1,
+      column: 1,
+    });
   }
 
-  tokens.push({ type: "EOF", value: "" });
+  tokens.push({ type: "EOF", value: "", line: lines.length + 1, column: 1 });
 
   return tokens;
 }
+
+// console.log(
+//   tokenize(`
+//   LDA A
+//   ADD B
+//   STA RES
+//   A, HEX 0002
+//   B, HEX 0005
+//   RES, HEX 0000
+// `),
+// );
+
+// console.log(
+//   tokenize(`
+//   LBL, LDA A
+//   ADD B
+//   STA RES
+//   BUN LBL
+//   A, HEX 0002
+//   B, HEX 0005
+//   RES, HEX 0000
+// `),
+// );
+
+// console.log(
+//   tokenize(`
+//     CLA
+//     LDA A
+//     ADD B
+//     STA RES
+//     A, HEX 0002
+//     B, DEC 0005
+//     RES, HEX 0000
+// `),
+// );
