@@ -125,7 +125,7 @@ export function tokenize(input: string) {
       }
 
       // if its a number (either decimal or hexadecimal)
-      if (/^\d+$/.test(token)) {
+      if (/^-?\d+$/.test(token)) {
         tokens.push({
           type: "NUMBER",
           value: token,

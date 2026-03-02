@@ -12,6 +12,7 @@ import type { ASTNode } from "@/types/parser";
 // import { Parser } from "./parser";
 // import { tokenize } from "./tokenizer";
 import { OPCODES } from "@/constants/opcodes";
+import { hexToNum, numToHex, parseValueByDatatype } from "./utility";
 
 export class Assembler {
   /** represents the ast */
@@ -64,18 +65,13 @@ export class Assembler {
 
         if (instructionCode.startsWith("0")) {
           // memory reference instruction
-          let instructionNumber = parseInt(instructionCode, 16);
+          let instructionNumber = hexToNum(instructionCode);
           if (node.indirect) {
             instructionNumber += 8;
           }
           // pushing the address, it would be label, so i guess i need to look into the table , get the address, convert it to string and push it
-          let add = this.symbolTable
-            .get(node.operand!)!
-            .toString(16)
-            .padStart(3, "0")
-            .toUpperCase();
-          machineCode =
-            instructionNumber.toString(16).padStart(1, "0").toUpperCase() + add;
+          let add = numToHex(this.symbolTable.get(node.operand!)!, 3);
+          machineCode = numToHex(instructionNumber, 1) + add;
         } else if (instructionCode.startsWith("7")) {
           // register reference instruction
           machineCode = instructionCode;
@@ -86,8 +82,8 @@ export class Assembler {
           throw new Error("Invalid instruction code");
         }
       } else if (node.type === "Data") {
-        let value = parseInt(node.value, node.datatype === "HEX" ? 16 : 10);
-        machineCode = value.toString(16).padStart(4, "0").toUpperCase();
+        let value = parseValueByDatatype(node.value, node.datatype);
+        machineCode = numToHex(value, 4);
       }
       this.machineCode.push(machineCode);
     }
