@@ -102,6 +102,17 @@ export function tokenize(input: string) {
         continue;
       }
 
+      // checking if its indirect addressing mode
+      if (upper === "I") {
+        tokens.push({
+          type: "INDIRECT",
+          value: "I",
+          line: lineNumber + 1,
+          column: i + 1,
+        });
+        continue;
+      }
+
       // checking if its an instruction
       if (upper in OPCODES) {
         tokens.push({

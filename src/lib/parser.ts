@@ -1,4 +1,7 @@
 /**
+ * @file This file is responsible for taking the array of tokens from the tokenizer and converting it into an Abstract Syntax Tree (AST) that the code generator can use to generate the final machine code.
+ * @author parv141206
+ *
  * BIGGGGG DISCLAIMER,
  *
  * I would never in my life use OOP by will but here i would have to. the whole "maintaining state" from one place to other was a bigggg headache. i gave up.
@@ -30,16 +33,14 @@ class ParseError extends Error {
     super(message);
   }
 }
-class Parser {
+export class Parser {
   private state: ParserState;
-  private source: string;
   private lines: string[];
   constructor(tokens: Token[], source: string) {
     this.state = {
       tokens,
       position: 0,
     };
-    this.source = source.trim();
     this.lines = source.split("\n").map((line) => line.trim());
   }
 
@@ -227,7 +228,7 @@ class Parser {
 
     // checking if this is an instruction:
     if (this.check(token, "OPCODE")) {
-      let instructionInfo = this.parseInstruction();
+      const instructionInfo = this.parseInstruction();
       opcode = instructionInfo.opcode;
       operand = instructionInfo.operand;
       return {
@@ -235,6 +236,7 @@ class Parser {
         label,
         opcode,
         operand,
+        indirect: instructionInfo.indirect,
       };
     }
 
@@ -252,7 +254,7 @@ class Parser {
       };
     }
 
-    this.error("Invalid line, bhai what are you doing :/");
+    this.error("chakla koi di baj no bane, jato re pacho tara python uper");
   }
 
   private parseLabel(): string {
@@ -264,9 +266,14 @@ class Parser {
     return name;
   }
 
-  private parseInstruction(): { opcode: string; operand: any } {
+  private parseInstruction(): {
+    opcode: string;
+    operand: any;
+    indirect: boolean;
+  } {
     const opcode = this.consume("OPCODE", "Expected opcode").value;
     let operand = null;
+    let indirect = false;
 
     const token = this.peek();
     if (this.check(token, "IDENTIFIER")) {
@@ -275,7 +282,13 @@ class Parser {
       operand = this.consume("NUMBER", "Expected number operand").value;
     }
 
-    return { opcode, operand };
+    // checking for indirect addressing mode
+    if (this.check(this.peek(), "INDIRECT")) {
+      this.advance();
+      indirect = true;
+    }
+
+    return { opcode, operand, indirect };
   }
 
   private parseData(): { datatype: string; value: any } {
@@ -295,7 +308,7 @@ class Parser {
    * @returns the AST!
    */
   public parse() {
-    let ast = [];
+    const ast = [];
 
     // making it so that theres an array in which tokens are line wise, so that i can easily parse them:
     // let currentLine: Token[] = [];
@@ -389,14 +402,14 @@ class Parser {
 //   ).parse(),
 // );
 
-// const code = `
-//     CLA
-//     LDA A
-//     ADD B
-//     STA RES
-//     A, HEX 0002
-//     B, DEC 0005
-//     RES, HEX 0000`;
+const code = `
+    CLA
+    LDA A
+    ADD B I
+    STA RES
+    A, HEX 0002
+    B, DEC 0005
+    RES, HEX 0000`;
 // console.log(new Parser(tokenize(code), code).parse());
 
 // console.log(

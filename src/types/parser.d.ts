@@ -35,4 +35,5 @@ type ASTNode =
       label: string | null;
       opcode: string;
       operand: string | null;
+      indirect: boolean;
     };
