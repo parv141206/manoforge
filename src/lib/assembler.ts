@@ -69,8 +69,15 @@ export class Assembler {
           if (node.indirect) {
             instructionNumber += 8;
           }
+          if (!node.operand) {
+            throw new Error(`Missing operand for instruction: ${instruction}`);
+          }
+          const operandAddress = this.symbolTable.get(node.operand);
+          if (operandAddress === undefined) {
+            throw new Error(`Undefined symbol: ${node.operand}`);
+          }
           // pushing the address, it would be label, so i guess i need to look into the table , get the address, convert it to string and push it
-          let add = numToHex(this.symbolTable.get(node.operand!)!, 3);
+          let add = numToHex(operandAddress, 3);
           machineCode = numToHex(instructionNumber, 1) + add;
         } else if (instructionCode.startsWith("7")) {
           // register reference instruction
