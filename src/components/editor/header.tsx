@@ -376,10 +376,10 @@ export function Header() {
 
   return (
     <div
-      className="flex h-full items-center justify-between rounded-lg px-4"
+      className="flex h-full items-center justify-between rounded-lg px-2 sm:px-4"
       style={{ backgroundColor: colorScheme.panel }}
     >
-      <div className="flex items-center gap-4">
+      <div className="hidden items-center gap-4 sm:flex">
         <h1
           className="font-title text-lg font-bold tracking-wide"
           style={{ color: colorScheme.accent }}
@@ -388,7 +388,7 @@ export function Header() {
         </h1>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 sm:gap-2">
         <div className="mr-4 hidden items-center gap-1 sm:flex">
           <span className="text-xs" style={{ color: colorScheme.textMuted }}>
             Delay
@@ -413,7 +413,7 @@ export function Header() {
 
         <button
           onClick={handleAssemble}
-          className="flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium transition-opacity"
+          className="flex items-center gap-1 rounded p-2 text-sm font-medium transition-opacity sm:gap-1.5 sm:px-3 sm:py-1.5"
           style={{
             backgroundColor: colorScheme.accent,
             color: colorScheme.background,
@@ -427,7 +427,7 @@ export function Header() {
         <button
           onClick={handleRun}
           disabled={!execution.isAssembled}
-          className="flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex items-center gap-1 rounded p-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-40 sm:gap-1.5 sm:px-3 sm:py-1.5"
           style={{
             backgroundColor: execution.isRunning ? "#ef4444" : "#22c55e",
             color: "#fff",
@@ -447,7 +447,7 @@ export function Header() {
         <button
           onClick={handleStep}
           disabled={!execution.isAssembled || execution.isRunning}
-          className="flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex items-center gap-1 rounded p-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-40 sm:gap-1.5 sm:px-3 sm:py-1.5"
           style={{
             backgroundColor: colorScheme.hover,
             color: colorScheme.text,
@@ -460,7 +460,7 @@ export function Header() {
 
         <button
           onClick={handleReset}
-          className="flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium transition-opacity"
+          className="flex items-center gap-1 rounded p-2 text-sm font-medium transition-opacity sm:gap-1.5 sm:px-3 sm:py-1.5"
           style={{
             backgroundColor: colorScheme.hover,
             color: colorScheme.text,
@@ -471,7 +471,7 @@ export function Header() {
           <span className="hidden sm:inline">Reset</span>
         </button>
 
-        <div className="relative ml-2" ref={themeMenuRef}>
+        <div className="relative ml-1 sm:ml-2" ref={themeMenuRef}>
           <button
             onClick={() => setShowThemeMenu(!showThemeMenu)}
             className="rounded p-2 transition-colors"

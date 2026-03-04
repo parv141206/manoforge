@@ -1,21 +1,32 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useFileStore } from "@/stores/file-store";
 import { useThemeStore } from "@/stores/theme-store";
 import { VscSearch, VscChevronLeft, VscChevronRight } from "react-icons/vsc";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 
 const ROWS_PER_PAGE = 16;
-const COLS = 16;
 
 function MemoryPanelInner() {
   const { memory } = useFileStore();
   const { colorScheme } = useThemeStore();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [cols, setCols] = useState(16);
 
-  const totalPages = Math.ceil(4096 / (ROWS_PER_PAGE * COLS));
+  // Responsive columns based on container width
+  useEffect(() => {
+    const updateCols = () => {
+      // On mobile, use 8 columns; on desktop, use 16
+      setCols(window.innerWidth < 640 ? 8 : 16);
+    };
+    updateCols();
+    window.addEventListener("resize", updateCols);
+    return () => window.removeEventListener("resize", updateCols);
+  }, []);
+
+  const totalPages = Math.ceil(4096 / (ROWS_PER_PAGE * cols));
 
   const searchAddress = useMemo(() => {
     if (!search) return null;
@@ -25,12 +36,12 @@ function MemoryPanelInner() {
 
   const displayPage = useMemo(() => {
     if (searchAddress !== null && searchAddress >= 0 && searchAddress < 4096) {
-      return Math.floor(searchAddress / (ROWS_PER_PAGE * COLS));
+      return Math.floor(searchAddress / (ROWS_PER_PAGE * cols));
     }
     return page;
-  }, [searchAddress, page]);
+  }, [searchAddress, page, cols]);
 
-  const startAddr = displayPage * ROWS_PER_PAGE * COLS;
+  const startAddr = displayPage * ROWS_PER_PAGE * cols;
 
   const goToPage = (newPage: number) => {
     if (newPage >= 0 && newPage < totalPages) {
@@ -83,7 +94,7 @@ function MemoryPanelInner() {
             style={{ color: colorScheme.textMuted }}
           >
             {startAddr.toString(16).toUpperCase().padStart(3, "0")} -{" "}
-            {Math.min(startAddr + ROWS_PER_PAGE * COLS - 1, 4095)
+            {Math.min(startAddr + ROWS_PER_PAGE * cols - 1, 4095)
               .toString(16)
               .toUpperCase()
               .padStart(3, "0")}
@@ -116,7 +127,7 @@ function MemoryPanelInner() {
                   color: colorScheme.textMuted,
                 }}
               ></th>
-              {Array.from({ length: COLS }, (_, i) => (
+              {Array.from({ length: cols }, (_, i) => (
                 <th
                   key={i}
                   className="sticky top-0 px-0.5 py-0.5 text-center"
@@ -132,7 +143,7 @@ function MemoryPanelInner() {
           </thead>
           <tbody>
             {Array.from({ length: ROWS_PER_PAGE }, (_, row) => {
-              const rowStart = startAddr + row * COLS;
+              const rowStart = startAddr + row * cols;
               if (rowStart >= 4096) return null;
 
               return (
@@ -143,7 +154,7 @@ function MemoryPanelInner() {
                   >
                     {rowStart.toString(16).toUpperCase().padStart(3, "0")}
                   </td>
-                  {Array.from({ length: COLS }, (_, col) => {
+                  {Array.from({ length: cols }, (_, col) => {
                     const addr = rowStart + col;
                     if (addr >= 4096) return <td key={col} />;
 

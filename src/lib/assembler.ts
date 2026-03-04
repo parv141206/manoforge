@@ -9,8 +9,8 @@
  */
 
 import type { ASTNode } from "@/types/parser";
-// import { Parser } from "./parser";
-// import { tokenize } from "./tokenizer";
+import { Parser } from "./parser";
+import { tokenize } from "./tokenizer";
 import { OPCODES } from "@/constants/opcodes";
 import { hexToNum, numToHex, parseValueByDatatype } from "./utility";
 
@@ -107,18 +107,18 @@ export class Assembler {
   }
 }
 
-// const code = `
-//     CLA
-//     LDA A
-//     ADD B
-//     STA RES
-//     A, HEX 0002
-//     B, DEC 0005
-//     RES, HEX 0000`;
-// const ast = new Parser(tokenize(code), code).parse();
-// console.log(ast);
-// const assembler = new Assembler(ast!);
-// assembler.firstPass();
-// console.log(assembler.symbolTable);
-// assembler.secondPass();
-// console.log(assembler.machineCode);
+const code = `
+    CLA
+    LDA A
+    ADD B
+    STA RES
+    A, HEX 0002
+    B, DEC 0005
+    RES, HEX 0000`;
+const ast = new Parser(tokenize(code), code).parse();
+console.log(ast);
+const assembler = new Assembler(ast!);
+assembler.firstPass();
+console.log(assembler.symbolTable);
+assembler.secondPass();
+console.log(assembler.machineCode);
