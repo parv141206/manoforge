@@ -1,6 +1,18 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Valorant";
+  src: url("/fonts/ValorantFont.ttf") format("truetype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Gudlak";
+  src: url("/fonts/Agoma.ttf") format("truetype");
+}
 @theme {
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif,
+  --font-sans:
+    var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-title: "Valorant", var(--font-sans);
+  --font-body: "Gudlak", var(--font-sans);
 }
