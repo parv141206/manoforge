@@ -92,7 +92,6 @@ export function Resizable({
   const [sizes, setSizes] = React.useState<number[]>(defaultSizes ?? []);
   const panelCount = React.Children.count(children);
 
-  // Initialize sizes if not provided
   React.useEffect(() => {
     if (sizes.length === 0 && panelCount > 0) {
       const equalSize = 100 / panelCount;
@@ -126,7 +125,6 @@ export function Resizable({
       let newLeftSize = startSizes[leftIdx]! + deltaPercent;
       let newRightSize = startSizes[rightIdx]! - deltaPercent;
 
-      // Apply min/max constraints
       const minLeft = minSizes[leftIdx] ?? 5;
       const minRight = minSizes[rightIdx] ?? 5;
       const maxLeft = maxSizes[leftIdx] ?? 95;

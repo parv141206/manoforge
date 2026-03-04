@@ -34,6 +34,7 @@ export function Header() {
     setAssembled,
     setCurrentLine,
     setMachineCode,
+    setAddressToLine,
     setMemoryWord,
     setRegister,
     addNotation,
@@ -87,6 +88,12 @@ export function Header() {
       const assembler = new Assembler(ast);
       const machineCodeStrings = assembler.assemble();
 
+      const addressToLineRecord: Record<number, number> = {};
+      assembler.addressToLine.forEach((line, addr) => {
+        addressToLineRecord[addr] = line;
+      });
+      setAddressToLine(addressToLineRecord);
+
       let address = 0;
       for (const codeStr of machineCodeStrings) {
         const value = parseInt(codeStr, 16);
@@ -104,6 +111,7 @@ export function Header() {
       setMachineCode(codeLines);
       setAssembled(true);
       setRegister("PC", 0);
+      setCurrentLine(null);
       addNotation(`Assembled successfully: ${machineCodeStrings.length} words`);
     } catch (error) {
       const message =
@@ -129,6 +137,8 @@ export function Header() {
         addNotation("Error: PC out of bounds");
         return false;
       }
+
+      setCurrentLine(pc);
 
       const toHex = (n: number, pad = 4) =>
         n.toString(16).toUpperCase().padStart(pad, "0");
@@ -178,7 +188,6 @@ export function Header() {
       }
 
       setRegister("AR", effectiveAddress);
-      setCurrentLine(pc);
 
       if (opcode < 7) {
         const drValue = state.memory[effectiveAddress] ?? 0;

@@ -15,10 +15,8 @@ function MemoryPanelInner() {
   const [page, setPage] = useState(0);
   const [cols, setCols] = useState(16);
 
-  // Responsive columns based on container width
   useEffect(() => {
     const updateCols = () => {
-      // On mobile, use 8 columns; on desktop, use 16
       setCols(window.innerWidth < 640 ? 8 : 16);
     };
     updateCols();

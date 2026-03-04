@@ -213,6 +213,7 @@ export class Parser {
     let operand = null;
 
     let token = this.peek();
+    const lineNumber = token.line;
     if (!token) {
       this.error("Unexpected end of line. ");
     }
@@ -237,6 +238,7 @@ export class Parser {
         opcode,
         operand,
         indirect: instructionInfo.indirect,
+        line: lineNumber,
       };
     }
 
@@ -251,6 +253,7 @@ export class Parser {
         label: label,
         datatype: dataInfo.datatype,
         value: dataInfo.value,
+        line: lineNumber,
       };
     }
 

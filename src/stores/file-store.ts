@@ -16,6 +16,7 @@ export interface ExecutionState {
   delay: number;
   notations: string[];
   machineCode: string[];
+  addressToLine: Record<number, number>;
 }
 
 export interface Registers {
@@ -58,6 +59,7 @@ export interface FileStore {
   addNotation: (notation: string) => void;
   clearNotations: () => void;
   setMachineCode: (code: string[]) => void;
+  setAddressToLine: (mapping: Record<number, number>) => void;
 
   setRegister: (key: keyof Registers, value: number) => void;
   resetRegisters: () => void;
@@ -111,6 +113,7 @@ export const useFileStore = create<FileStore>()(
         delay: 500,
         notations: [],
         machineCode: [],
+        addressToLine: {},
       },
 
       createFile: (name) => {
@@ -204,6 +207,12 @@ export const useFileStore = create<FileStore>()(
         }));
       },
 
+      setAddressToLine: (mapping) => {
+        set((state) => ({
+          execution: { ...state.execution, addressToLine: mapping },
+        }));
+      },
+
       setRegister: (key, value) => {
         set((state) => ({
           registers: { ...state.registers, [key]: value },
@@ -247,6 +256,7 @@ export const useFileStore = create<FileStore>()(
             delay: get().execution.delay,
             notations: [],
             machineCode: [],
+            addressToLine: {},
           },
         });
       },

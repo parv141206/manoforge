@@ -313,7 +313,15 @@ function CodeEditorInner() {
   };
 
   const isCurrentLine = (lineIndex: number) => {
-    return execution?.currentLine === lineIndex;
+    // execution.currentLine stores the memory address (PC)
+    if (
+      execution?.currentLine === null ||
+      execution?.currentLine === undefined
+    ) {
+      return false;
+    }
+    const mappedLine = execution.addressToLine?.[execution.currentLine];
+    return mappedLine === lineIndex;
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

@@ -21,6 +21,8 @@ export class Assembler {
   symbolTable: Map<string, number> = new Map();
   /** represents the machine code which is finally generated */
   machineCode: string[] = [];
+  /** mapping from memory address to source line number (0-indexed) */
+  addressToLine: Map<number, number> = new Map();
   /** location counter */
   locationCounter: number = 0;
 
@@ -39,6 +41,9 @@ export class Assembler {
       } else if (node.type === "Data") {
         /** second case is that if the instruction is a data declaration, then i obviously add the label to the symbol table with the current location counter */
         this.symbolTable.set(node.label, this.locationCounter);
+      }
+      if (node.type !== "Program") {
+        this.addressToLine.set(this.locationCounter, node.line - 1);
       }
       this.locationCounter += 1;
     }

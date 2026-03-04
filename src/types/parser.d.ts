@@ -29,6 +29,7 @@ type ASTNode =
       label: string;
       datatype: string;
       value: string;
+      line: number;
     }
   | {
       type: "Instruction";
@@ -36,4 +37,5 @@ type ASTNode =
       opcode: string;
       operand: string | null;
       indirect: boolean;
+      line: number;
     };
