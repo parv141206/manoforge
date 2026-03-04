@@ -16,14 +16,14 @@
 
 **1. Code editor with sexy syntax highlighting!**
 
-<img src="image.png" width="100%" />
+<img src="./public/docs/image.png" width="100%" />
 
 </td>
 <td width="50%" valign="top">
 
 **2. Save your programs (even though its in local memeory hehe)**
 
-<img src="image-1.png" width="100%" />
+<img src="./public/docs/image-1.png" width="100%" />
 
 </td>
 </tr>
@@ -32,14 +32,14 @@
 
 **3. Get suggestions as you type, gives you hints ya!**
 
-<img src="image-2.png" width="100%" />
+<img src="./public/docs/image-2.png" width="100%" />
 
 </td>
 <td width="50%" valign="top">
 
 **4. Controll literally everything about the simulation**
 
-<img src="image-3.png" width="100%" />
+<img src="./public/docs/image-3.png" width="100%" />
 
 </td>
 </tr>
@@ -48,14 +48,14 @@
 
 **5. Check the states of all registers and E ofcourse how can i forget that**
 
-<img src="image-4.png" width="100%" />
+<img src="./public/docs/image-4.png" width="100%" />
 
 </td>
 <td width="50%" valign="top">
 
 **6. Full huge memory, without even a single performance issue**
 
-<img src="image-5.png" width="100%" />
+<img src="./public/docs/image-5.png" width="100%" />
 
 </td>
 </tr>
@@ -64,14 +64,14 @@
 
 **7. Ofcourse, themes so you dont get bored (i need more themes pleeeeeasseeee consider contributing)**
 
-<img src="image-6.png" width="100%" />
+<img src="./public/docs/image-6.png" width="100%" />
 
 </td>
 <td width="50%" valign="top">
 
 **8. Just in case your brilliant mind ever gets stuck, docs**
 
-<img src="image-7.png" width="100%" />
+<img src="./public/docs/image-7.png" width="100%" />
 
 </td>
 </tr>
@@ -98,3 +98,5 @@ labelDecl    → IDENTIFIER COMMA (instruction | dataDecl)
 dataDecl     → DATATYPE NUMBER
 operand      → IDENTIFIER | NUMBER
 ```
+
+### Dedicated to a genius, Morris Mano, the guy who made me fall in love with literal architectures, and my teacher, Prof. Zishan Noorani!
