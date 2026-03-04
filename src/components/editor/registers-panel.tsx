@@ -47,22 +47,22 @@ function RegistersPanelInner() {
     key: keyof typeof registers;
     bits: number;
   }[] = [
-    { name: "INR", key: "INR", bits: 8 },
-    { name: "OUTR", key: "OUTR", bits: 8 },
-    { name: "SC", key: "SC", bits: 3 },
+    // { name: "INR", key: "INR", bits: 8 },
+    // { name: "OUTR", key: "OUTR", bits: 8 },
+    // { name: "SC", key: "SC", bits: 3 },
   ];
 
   const flags: { name: string; key: keyof typeof registers }[] = [
     { name: "E", key: "E" },
-    { name: "S", key: "S" },
-    { name: "I", key: "I" },
-    { name: "R", key: "R" },
+    // { name: "S", key: "S" },
+    // { name: "I", key: "I" },
+    // { name: "R", key: "R" },
   ];
 
   const ioFlags: { name: string; key: keyof typeof registers }[] = [
-    { name: "IEN", key: "IEN" },
-    { name: "FGI", key: "FGI" },
-    { name: "FGO", key: "FGO" },
+    // { name: "IEN", key: "IEN" },
+    // { name: "FGI", key: "FGI" },
+    // { name: "FGO", key: "FGO" },
   ];
 
   return (
@@ -132,7 +132,7 @@ function RegistersPanelInner() {
 
       <div className="flex-1 overflow-y-auto p-1.5">
         {activeTab === "registers" ? (
-          <div className="space-y-2">
+          <div className="flex h-full flex-col space-y-2">
             <div className="grid grid-cols-2 gap-1">
               {mainRegisters.map(({ name, key, bits }) => (
                 <div
@@ -237,7 +237,7 @@ function RegistersPanelInner() {
 
             {execution?.notations?.length > 0 && (
               <div
-                className="border-t pt-1.5"
+                className="flex min-h-0 flex-1 flex-col border-t pt-1.5"
                 style={{ borderColor: colorScheme.border }}
               >
                 <span
@@ -246,7 +246,7 @@ function RegistersPanelInner() {
                 >
                   LOG
                 </span>
-                <div className="mt-1 max-h-48 space-y-0.5 overflow-y-auto">
+                <div className="mt-1 flex-1 space-y-0.5 overflow-y-auto">
                   {execution.notations.map((note, i) => (
                     <div
                       key={i}

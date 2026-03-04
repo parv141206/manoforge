@@ -49,14 +49,19 @@ function splitTokens(line: string): string[] {
  * @param input The literal raw input of the user
  */
 export function tokenize(input: string) {
-  // getting each line of the input:
   const lines = input.split("\n");
 
   const tokens: Token[] = [];
 
-  // going through each line and tokenizing it:
   for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
-    const line = lines[lineNumber]!.trim();
+    let line = lines[lineNumber]!;
+
+    const commentIndex = line.indexOf(";");
+    if (commentIndex !== -1) {
+      line = line.slice(0, commentIndex);
+    }
+
+    line = line.trim();
 
     const lineTokens = splitTokens(line);
 
@@ -95,6 +100,17 @@ export function tokenize(input: string) {
       if (upper === "DEC" || upper === "HEX") {
         tokens.push({
           type: "DATATYPE",
+          value: upper,
+          line: lineNumber + 1,
+          column: i + 1,
+        });
+        continue;
+      }
+
+      // checking if its a directive (END, ORG)
+      if (upper === "END" || upper === "ORG") {
+        tokens.push({
+          type: "DIRECTIVE",
           value: upper,
           line: lineNumber + 1,
           column: i + 1,

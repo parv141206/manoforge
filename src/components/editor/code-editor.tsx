@@ -327,13 +327,187 @@ function CodeEditorInner() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const textarea = e.currentTarget;
     const pos = textarea.selectionStart;
+    const end = textarea.selectionEnd;
     const val = textarea.value;
 
+    // Ctrl+Shift+F - Format code
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "F") {
       e.preventDefault();
       if (activeFileId) {
         const formatted = formatAssemblyCode(val);
         updateFileContent(activeFileId, formatted);
+      }
+      return;
+    }
+
+    // Ctrl+Space - Explicitly show suggestions
+    if ((e.ctrlKey || e.metaKey) && e.key === " ") {
+      e.preventDefault();
+      const { word } = getCurrentWord(val, pos);
+      const newSuggestions =
+        word.length > 0
+          ? getSuggestions(word)
+          : [...INSTRUCTIONS, ...DIRECTIVES].slice(0, 8).map((text) => ({
+              text,
+              type: INSTRUCTIONS.includes(text)
+                ? ("instruction" as const)
+                : ("directive" as const),
+            }));
+      setSuggestions(newSuggestions);
+      setSelectedIndex(0);
+      return;
+    }
+
+    // Ctrl+D - Duplicate line
+    if ((e.ctrlKey || e.metaKey) && e.key === "d") {
+      e.preventDefault();
+      const lineStart = val.lastIndexOf("\n", pos - 1) + 1;
+      const lineEnd = val.indexOf("\n", pos);
+      const actualLineEnd = lineEnd === -1 ? val.length : lineEnd;
+      const currentLine = val.slice(lineStart, actualLineEnd);
+      const newContent =
+        val.slice(0, actualLineEnd) +
+        "\n" +
+        currentLine +
+        val.slice(actualLineEnd);
+      if (activeFileId) {
+        updateFileContent(activeFileId, newContent);
+        setTimeout(() => {
+          const newPos = actualLineEnd + 1 + (pos - lineStart);
+          textarea.setSelectionRange(newPos, newPos);
+        }, 0);
+      }
+      return;
+    }
+
+    // Ctrl+/ - Toggle comment
+    if ((e.ctrlKey || e.metaKey) && e.key === "/") {
+      e.preventDefault();
+      const lineStart = val.lastIndexOf("\n", pos - 1) + 1;
+      const lineEnd = val.indexOf("\n", pos);
+      const actualLineEnd = lineEnd === -1 ? val.length : lineEnd;
+      const currentLine = val.slice(lineStart, actualLineEnd);
+      const trimmed = currentLine.trimStart();
+      const leadingSpaces = currentLine.length - trimmed.length;
+
+      let newLine: string;
+      let newPos: number;
+      if (trimmed.startsWith(";")) {
+        newLine =
+          currentLine.slice(0, leadingSpaces) + trimmed.slice(1).trimStart();
+        newPos = Math.max(lineStart, pos - 1);
+      } else {
+        newLine = currentLine.slice(0, leadingSpaces) + "; " + trimmed;
+        newPos = pos + 2;
+      }
+
+      const newContent =
+        val.slice(0, lineStart) + newLine + val.slice(actualLineEnd);
+      if (activeFileId) {
+        updateFileContent(activeFileId, newContent);
+        setTimeout(() => {
+          textarea.setSelectionRange(newPos, newPos);
+        }, 0);
+      }
+      return;
+    }
+
+    // Ctrl+Shift+K - Delete line
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "K") {
+      e.preventDefault();
+      const lineStart = val.lastIndexOf("\n", pos - 1) + 1;
+      const lineEnd = val.indexOf("\n", pos);
+      const actualLineEnd = lineEnd === -1 ? val.length : lineEnd + 1;
+      const newContent = val.slice(0, lineStart) + val.slice(actualLineEnd);
+      if (activeFileId) {
+        updateFileContent(activeFileId, newContent);
+        setTimeout(() => {
+          textarea.setSelectionRange(lineStart, lineStart);
+        }, 0);
+      }
+      return;
+    }
+
+    // Alt+Up - Move line up
+    if (e.altKey && e.key === "ArrowUp") {
+      e.preventDefault();
+      const lineStart = val.lastIndexOf("\n", pos - 1) + 1;
+      const lineEnd = val.indexOf("\n", pos);
+      const actualLineEnd = lineEnd === -1 ? val.length : lineEnd;
+      if (lineStart === 0) return;
+
+      const prevLineStart = val.lastIndexOf("\n", lineStart - 2) + 1;
+      const currentLine = val.slice(lineStart, actualLineEnd);
+      const prevLine = val.slice(prevLineStart, lineStart - 1);
+
+      const newContent =
+        val.slice(0, prevLineStart) +
+        currentLine +
+        "\n" +
+        prevLine +
+        val.slice(actualLineEnd);
+      const offsetInLine = pos - lineStart;
+      const newPos = prevLineStart + offsetInLine;
+
+      if (activeFileId) {
+        updateFileContent(activeFileId, newContent);
+        setTimeout(() => {
+          textarea.setSelectionRange(newPos, newPos);
+        }, 0);
+      }
+      return;
+    }
+
+    // Alt+Down - Move line down
+    if (e.altKey && e.key === "ArrowDown") {
+      e.preventDefault();
+      const lineStart = val.lastIndexOf("\n", pos - 1) + 1;
+      const lineEnd = val.indexOf("\n", pos);
+      if (lineEnd === -1) return;
+
+      const nextLineEnd = val.indexOf("\n", lineEnd + 1);
+      const actualNextLineEnd = nextLineEnd === -1 ? val.length : nextLineEnd;
+      const currentLine = val.slice(lineStart, lineEnd);
+      const nextLine = val.slice(lineEnd + 1, actualNextLineEnd);
+
+      const newContent =
+        val.slice(0, lineStart) +
+        nextLine +
+        "\n" +
+        currentLine +
+        val.slice(actualNextLineEnd);
+      const offsetInLine = pos - lineStart;
+      const newPos = lineStart + nextLine.length + 1 + offsetInLine;
+
+      if (activeFileId) {
+        updateFileContent(activeFileId, newContent);
+        setTimeout(() => {
+          textarea.setSelectionRange(newPos, newPos);
+        }, 0);
+      }
+      return;
+    }
+
+    // Ctrl+A - Select all (let browser handle but prevent our logic)
+    if ((e.ctrlKey || e.metaKey) && e.key === "a") {
+      return;
+    }
+
+    // Home - Go to start of line (after indentation)
+    if (e.key === "Home" && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      const lineStart = val.lastIndexOf("\n", pos - 1) + 1;
+      const lineEnd = val.indexOf("\n", pos);
+      const actualLineEnd = lineEnd === -1 ? val.length : lineEnd;
+      const currentLine = val.slice(lineStart, actualLineEnd);
+      const firstNonSpace = currentLine.search(/\S/);
+      const targetPos =
+        firstNonSpace === -1 ? lineStart : lineStart + firstNonSpace;
+      const newPos = pos === targetPos ? lineStart : targetPos;
+      if (e.shiftKey) {
+        textarea.setSelectionRange(newPos, end);
+      } else {
+        textarea.setSelectionRange(newPos, newPos);
       }
       return;
     }
@@ -535,7 +709,7 @@ function CodeEditorInner() {
                   onMouseEnter={() => setSelectedIndex(i)}
                 >
                   <span
-                    className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                    className="h-1.5 w-1.5 shrink-0 rounded-full"
                     style={{ backgroundColor: getTypeColor(suggestion.type) }}
                   />
                   <span style={{ color: getTypeColor(suggestion.type) }}>

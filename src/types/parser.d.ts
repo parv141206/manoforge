@@ -38,4 +38,9 @@ type ASTNode =
       operand: string | null;
       indirect: boolean;
       line: number;
+    }
+  | {
+      type: "ORG";
+      address: number;
+      line: number;
     };

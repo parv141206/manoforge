@@ -242,6 +242,34 @@ export class Parser {
       };
     }
 
+    // checking if this is a directive (END, ORG)
+    else if (this.check(token, "DIRECTIVE")) {
+      const directive = token.value;
+      this.advance();
+      if (directive === "END") {
+        while (this.peek().type !== "EOF" && this.peek().type !== "NEWLINE") {
+          this.advance();
+        }
+        return null as unknown as ASTNode;
+      }
+      if (directive === "ORG") {
+        let address = 0;
+        if (this.peek().type === "NUMBER") {
+          address = parseInt(this.peek().value, 10);
+          this.advance();
+        } else if (this.peek().type === "IDENTIFIER") {
+          const hexValue = this.peek().value;
+          address = parseInt(hexValue, 16);
+          this.advance();
+        }
+        return {
+          type: "ORG",
+          address,
+          line: lineNumber,
+        };
+      }
+    }
+
     // checking if this is data declaration
     else if (this.check(token, "DATATYPE")) {
       if (!label) {
@@ -358,15 +386,23 @@ export class Parser {
         this.advance();
         continue;
       }
+      // Check for END directive to stop parsing
+      if (this.peek().type === "DIRECTIVE" && this.peek().value === "END") {
+        this.advance();
+        break;
+      }
       try {
         const astNode = this.parseLine();
-        ast.push(astNode);
+        // Filter out null nodes (from directives like ORG)
+        if (astNode !== null) {
+          ast.push(astNode);
+        }
       } catch (e) {
         if (e instanceof ParseError) {
           // again , sexy errrrrrorrrrrrrrrrrrrrrrrrrrrrrrr
           this.formatError(e);
         }
-        return;
+        throw e; // Re-throw to propagate the error
       }
 
       if (this.peek().type === "NEWLINE") {

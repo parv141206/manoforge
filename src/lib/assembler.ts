@@ -21,10 +21,14 @@ export class Assembler {
   symbolTable: Map<string, number> = new Map();
   /** represents the machine code which is finally generated */
   machineCode: string[] = [];
+  /** mapping from memory address to machine code */
+  addressToCode: Map<number, string> = new Map();
   /** mapping from memory address to source line number (0-indexed) */
   addressToLine: Map<number, number> = new Map();
   /** location counter */
   locationCounter: number = 0;
+  /** starting address for execution */
+  startAddress: number = 0;
 
   constructor(ast: ASTNode[]) {
     this.ast = ast;
@@ -35,6 +39,13 @@ export class Assembler {
    */
   public firstPass() {
     for (const node of this.ast) {
+      if (node.type === "ORG") {
+        this.locationCounter = node.address;
+        continue;
+      }
+      if (node.type === "Program") {
+        continue;
+      }
       /** first case is that if the instruction itself has a starting label. i mean like for BUN and controlling loops we do add labels to instructions, so this is that */
       if (node.type === "Instruction" && node.label) {
         this.symbolTable.set(node.label, this.locationCounter);
@@ -42,9 +53,7 @@ export class Assembler {
         /** second case is that if the instruction is a data declaration, then i obviously add the label to the symbol table with the current location counter */
         this.symbolTable.set(node.label, this.locationCounter);
       }
-      if (node.type !== "Program") {
-        this.addressToLine.set(this.locationCounter, node.line - 1);
-      }
+      this.addressToLine.set(this.locationCounter, node.line - 1);
       this.locationCounter += 1;
     }
   }
@@ -53,7 +62,12 @@ export class Assembler {
    * the instructions are finally converted to the machine code in this pass, the symbol table is used to resolve the labels to their corresponding addresses
    */
   public secondPass() {
+    this.locationCounter = 0;
     for (const node of this.ast) {
+      if (node.type === "ORG") {
+        this.locationCounter = node.address;
+        continue;
+      }
       let machineCode = "";
       if (node.type === "Instruction") {
         let instruction = node.opcode as keyof typeof OPCODES;
@@ -97,7 +111,11 @@ export class Assembler {
         let value = parseValueByDatatype(node.value, node.datatype);
         machineCode = numToHex(value, 4);
       }
-      this.machineCode.push(machineCode);
+      if (machineCode) {
+        this.addressToCode.set(this.locationCounter, machineCode);
+        this.machineCode.push(machineCode);
+        this.locationCounter += 1;
+      }
     }
   }
 
@@ -106,6 +124,16 @@ export class Assembler {
    * @returns an array of machine code
    */
   public assemble() {
+    this.startAddress = 0;
+    for (const node of this.ast) {
+      if (node.type === "ORG") {
+        this.startAddress = node.address;
+        break;
+      }
+      if (node.type === "Instruction" || node.type === "Data") {
+        break;
+      }
+    }
     this.firstPass();
     this.secondPass();
     return this.machineCode;

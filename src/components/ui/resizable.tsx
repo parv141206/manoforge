@@ -54,12 +54,12 @@ function ResizeHandle({ direction, onMouseDown }: HandleProps) {
 
   return (
     <div
-      className={`relative flex-shrink-0 ${
+      className={`relative shrink-0 ${
         direction === "horizontal"
           ? "w-1 cursor-col-resize"
           : "h-1 cursor-row-resize"
       }`}
-      style={{ backgroundColor: colorScheme.border }}
+      style={{ backgroundColor: "transparent" }}
       onMouseDown={handleMouseDown}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}

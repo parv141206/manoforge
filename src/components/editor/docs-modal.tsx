@@ -551,7 +551,7 @@ export function DocsModal({ isOpen, onClose }: DocsModalProps) {
                         className="rounded px-1"
                         style={{ backgroundColor: colorScheme.hover }}
                       >
-                        /
+                        ;
                       </code>
                     </li>
                     <li>

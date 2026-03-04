@@ -7,6 +7,7 @@ export type Token =
   | { type: "NUMBER"; value: string; line: number; column: number }
   | { type: "OPCODE"; value: string; line: number; column: number }
   | { type: "DATATYPE"; value: string; line: number; column: number }
+  | { type: "DIRECTIVE"; value: string; line: number; column: number }
   | { type: "INDIRECT"; value: "I"; line: number; column: number }
   | { type: "COMMA"; value: ","; line: number; column: number }
   | { type: "NEWLINE"; value: "\n"; line: number; column: number }

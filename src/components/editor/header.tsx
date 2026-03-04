@@ -80,8 +80,8 @@ export function Header() {
       const parser = new Parser(tokens, activeFile.content);
       const ast = parser.parse();
 
-      if (!ast) {
-        addNotation("Error: Failed to parse code");
+      if (!ast || ast.length === 0) {
+        addNotation("Error: No valid code to assemble");
         return;
       }
 
@@ -94,23 +94,23 @@ export function Header() {
       });
       setAddressToLine(addressToLineRecord);
 
-      let address = 0;
-      for (const codeStr of machineCodeStrings) {
-        const value = parseInt(codeStr, 16);
+      assembler.addressToCode.forEach((code, address) => {
+        const value = parseInt(code, 16);
         if (!isNaN(value)) {
           setMemoryWord(address, value);
-          address++;
         }
-      }
+      });
 
-      const codeLines = machineCodeStrings.map(
-        (code, idx) =>
-          `${idx.toString(16).toUpperCase().padStart(3, "0")}: ${code}`,
-      );
+      const codeLines: string[] = [];
+      assembler.addressToCode.forEach((code, addr) => {
+        codeLines.push(
+          `${addr.toString(16).toUpperCase().padStart(3, "0")}: ${code}`,
+        );
+      });
 
       setMachineCode(codeLines);
       setAssembled(true);
-      setRegister("PC", 0);
+      setRegister("PC", assembler.startAddress);
       setCurrentLine(null);
       addNotation(`Assembled successfully: ${machineCodeStrings.length} words`);
     } catch (error) {
@@ -498,7 +498,7 @@ export function Header() {
 
           {showThemeMenu && (
             <div
-              className="absolute top-full right-0 z-50 mt-2 min-w-[140px] rounded-lg py-1 shadow-xl"
+              className="absolute top-full right-0 z-50 mt-2 min-w-35 rounded-lg py-1 shadow-xl"
               style={{
                 backgroundColor: colorScheme.panel,
                 border: `1px solid ${colorScheme.border}`,
