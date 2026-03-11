@@ -279,25 +279,26 @@ export function Header() {
     const state = useFileStore.getState();
     const bit = ir & 0xfff;
 
+          await note(`T3: Register reference instruction`);
     if (ir & 0x800) {
-      await note(`T3: Register reference instruction`);
-      if (bit & 0x400) {
+    }
+      if (bit & 0x800) {
         setRegister("AC", 0);
         await note("T3: CLA: AC <- 0");
       }
-      if (bit & 0x200) {
+      if (bit & 0x400) {
         setRegister("E", 0);
         await note("T3: CLE: E <- 0");
       }
-      if (bit & 0x100) {
+      if (bit & 0x200) {
         setRegister("AC", ~state.registers.AC & 0xffff);
         await note("T3: CMA: AC <- ~AC");
       }
-      if (bit & 0x080) {
+      if (bit & 0x100) {
         setRegister("E", state.registers.E ^ 1);
         await note("T3: CME: E <- ~E");
       }
-      if (bit & 0x040) {
+      if (bit & 0x080) {
         const ac = state.registers.AC;
         const e = state.registers.E;
         const newAC = ((e << 15) | (ac >> 1)) & 0xffff;
@@ -305,7 +306,7 @@ export function Header() {
         setRegister("E", ac & 1);
         await note("T3: CIR: AC <- shr AC, AC[15] <- E, E <- AC[0]");
       }
-      if (bit & 0x020) {
+      if (bit & 0x040) {
         const ac = state.registers.AC;
         const e = state.registers.E;
         const newAC = ((ac << 1) | e) & 0xffff;
@@ -313,35 +314,35 @@ export function Header() {
         setRegister("E", (ac >> 15) & 1);
         await note("T3: CIL: AC <- shl AC, AC[0] <- E, E <- AC[15]");
       }
-      if (bit & 0x010) {
+      if (bit & 0x020) {
         setRegister("AC", (state.registers.AC + 1) & 0xffff);
         await note("T3: INC: AC <- AC + 1");
       }
-      if (bit & 0x008) {
+      if (bit & 0x010) {
         if (state.registers.AC & 0x8000) {
           setRegister("PC", state.registers.PC + 2);
         }
         await note("T3: SPA: if AC[15]=0 then PC <- PC + 1");
       }
-      if (bit & 0x004) {
+      if (bit & 0x008) {
         if (state.registers.AC & 0x8000) {
           setRegister("PC", state.registers.PC + 2);
         }
         await note("T3: SNA: if AC[15]=1 then PC <- PC + 1");
       }
-      if (bit & 0x002) {
+      if (bit & 0x004) {
         if (state.registers.AC === 0) {
           setRegister("PC", state.registers.PC + 2);
         }
         await note("T3: SZA: if AC=0 then PC <- PC + 1");
       }
-      if (bit & 0x001) {
+      if (bit & 0x002) {
         if (state.registers.E === 0) {
           setRegister("PC", state.registers.PC + 2);
         }
         await note("T3: SZE: if E=0 then PC <- PC + 1");
       }
-    }
+    
   };
 
   const handleRun = async () => {

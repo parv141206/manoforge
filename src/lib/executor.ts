@@ -163,6 +163,8 @@ export class Executor {
       this.E = "0";
     } else if (instruction === "7200") {
       /** CMA: AC <- ~AC */
+      console.log("hhehehhehehehehheheheheheh")
+      console.log(numToHex(~hexToNum(this.AC) , 4))
       this.AC = numToHex(~hexToNum(this.AC), 4);
     } else if (instruction === "7100") {
       /** CME: E <- ~E */
