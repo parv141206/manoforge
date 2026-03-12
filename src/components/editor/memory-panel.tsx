@@ -147,7 +147,7 @@ function MemoryPanelInner() {
                     const isPC = registers.PC === addr;
                     const isNonZero = value !== 0;
                     const info = addressInfo?.[addr];
-                    const hasInfo = info?.label || info?.instruction;
+                    const hasInfo = info?.label ?? info?.instruction;
 
                     return (
                       <td

@@ -65,8 +65,9 @@ export function Header() {
   }, []);
 
   useEffect(() => {
+    const intervalId = executorRef.current;
     return () => {
-      if (executorRef.current) clearInterval(executorRef.current);
+      if (intervalId) clearInterval(intervalId);
     };
   }, []);
 
