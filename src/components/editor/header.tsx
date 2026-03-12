@@ -35,6 +35,7 @@ export function Header() {
     setCurrentLine,
     setMachineCode,
     setAddressToLine,
+    setAddressInfo,
     setMemoryWord,
     setRegister,
     addNotation,
@@ -93,6 +94,15 @@ export function Header() {
         addressToLineRecord[addr] = line;
       });
       setAddressToLine(addressToLineRecord);
+
+      const addressInfoRecord: Record<
+        number,
+        { label?: string; instruction?: string }
+      > = {};
+      assembler.addressInfo.forEach((info, addr) => {
+        addressInfoRecord[addr] = info;
+      });
+      setAddressInfo(addressInfoRecord);
 
       assembler.addressToCode.forEach((code, address) => {
         const value = parseInt(code, 16);
@@ -258,12 +268,14 @@ export function Header() {
           return true;
         }
         case 7: {
+          setRegister("PC", pc + 1);
           await handleRegisterInstruction(ir, note);
-          break;
+          addNotation("────────────────────");
+          return true;
         }
       }
 
-      setRegister("PC", state.registers.PC + 1);
+      setRegister("PC", pc + 1);
       addNotation("────────────────────");
       return true;
     } catch {
@@ -276,73 +288,72 @@ export function Header() {
     ir: number,
     note: (msg: string) => Promise<boolean>,
   ) => {
-    const state = useFileStore.getState();
     const bit = ir & 0xfff;
 
-          await note(`T3: Register reference instruction`);
-    if (ir & 0x800) {
+    await note(`T3: Register reference instruction`);
+    if (bit & 0x800) {
+      setRegister("AC", 0);
+      await note("T3: CLA: AC <- 0");
     }
-      if (bit & 0x800) {
-        setRegister("AC", 0);
-        await note("T3: CLA: AC <- 0");
+    if (bit & 0x400) {
+      setRegister("E", 0);
+      await note("T3: CLE: E <- 0");
+    }
+    if (bit & 0x200) {
+      setRegister("AC", ~useFileStore.getState().registers.AC & 0xffff);
+      await note("T3: CMA: AC <- ~AC");
+    }
+    if (bit & 0x100) {
+      setRegister("E", useFileStore.getState().registers.E ^ 1);
+      await note("T3: CME: E <- ~E");
+    }
+    if (bit & 0x080) {
+      const ac = useFileStore.getState().registers.AC;
+      const e = useFileStore.getState().registers.E;
+      const newAC = ((e << 15) | (ac >> 1)) & 0xffff;
+      setRegister("AC", newAC);
+      setRegister("E", ac & 1);
+      await note("T3: CIR: AC <- shr AC, AC[15] <- E, E <- AC[0]");
+    }
+    if (bit & 0x040) {
+      const ac = useFileStore.getState().registers.AC;
+      const e = useFileStore.getState().registers.E;
+      const newAC = ((ac << 1) | e) & 0xffff;
+      setRegister("AC", newAC);
+      setRegister("E", (ac >> 15) & 1);
+      await note("T3: CIL: AC <- shl AC, AC[0] <- E, E <- AC[15]");
+    }
+    if (bit & 0x020) {
+      setRegister("AC", (useFileStore.getState().registers.AC + 1) & 0xffff);
+      await note("T3: INC: AC <- AC + 1");
+    }
+    if (bit & 0x010) {
+      if (
+        (useFileStore.getState().registers.AC & 0x8000) === 0 &&
+        useFileStore.getState().registers.AC !== 0
+      ) {
+        setRegister("PC", useFileStore.getState().registers.PC + 1);
       }
-      if (bit & 0x400) {
-        setRegister("E", 0);
-        await note("T3: CLE: E <- 0");
+      await note("T3: SPA: if AC[15]=0 then PC <- PC + 1");
+    }
+    if (bit & 0x008) {
+      if (useFileStore.getState().registers.AC & 0x8000) {
+        setRegister("PC", useFileStore.getState().registers.PC + 1);
       }
-      if (bit & 0x200) {
-        setRegister("AC", ~state.registers.AC & 0xffff);
-        await note("T3: CMA: AC <- ~AC");
+      await note("T3: SNA: if AC[15]=1 then PC <- PC + 1");
+    }
+    if (bit & 0x004) {
+      if (useFileStore.getState().registers.AC === 0) {
+        setRegister("PC", useFileStore.getState().registers.PC + 1);
       }
-      if (bit & 0x100) {
-        setRegister("E", state.registers.E ^ 1);
-        await note("T3: CME: E <- ~E");
+      await note("T3: SZA: if AC=0 then PC <- PC + 1");
+    }
+    if (bit & 0x002) {
+      if (useFileStore.getState().registers.E === 0) {
+        setRegister("PC", useFileStore.getState().registers.PC + 1);
       }
-      if (bit & 0x080) {
-        const ac = state.registers.AC;
-        const e = state.registers.E;
-        const newAC = ((e << 15) | (ac >> 1)) & 0xffff;
-        setRegister("AC", newAC);
-        setRegister("E", ac & 1);
-        await note("T3: CIR: AC <- shr AC, AC[15] <- E, E <- AC[0]");
-      }
-      if (bit & 0x040) {
-        const ac = state.registers.AC;
-        const e = state.registers.E;
-        const newAC = ((ac << 1) | e) & 0xffff;
-        setRegister("AC", newAC);
-        setRegister("E", (ac >> 15) & 1);
-        await note("T3: CIL: AC <- shl AC, AC[0] <- E, E <- AC[15]");
-      }
-      if (bit & 0x020) {
-        setRegister("AC", (state.registers.AC + 1) & 0xffff);
-        await note("T3: INC: AC <- AC + 1");
-      }
-      if (bit & 0x010) {
-        if (state.registers.AC & 0x8000) {
-          setRegister("PC", state.registers.PC + 2);
-        }
-        await note("T3: SPA: if AC[15]=0 then PC <- PC + 1");
-      }
-      if (bit & 0x008) {
-        if (state.registers.AC & 0x8000) {
-          setRegister("PC", state.registers.PC + 2);
-        }
-        await note("T3: SNA: if AC[15]=1 then PC <- PC + 1");
-      }
-      if (bit & 0x004) {
-        if (state.registers.AC === 0) {
-          setRegister("PC", state.registers.PC + 2);
-        }
-        await note("T3: SZA: if AC=0 then PC <- PC + 1");
-      }
-      if (bit & 0x002) {
-        if (state.registers.E === 0) {
-          setRegister("PC", state.registers.PC + 2);
-        }
-        await note("T3: SZE: if E=0 then PC <- PC + 1");
-      }
-    
+      await note("T3: SZE: if E=0 then PC <- PC + 1");
+    }
   };
 
   const handleRun = async () => {
@@ -405,8 +416,8 @@ export function Header() {
           </span>
           <input
             type="range"
-            min="50"
-            max="2000"
+            min="0"
+            max="5000"
             step="50"
             value={execution.delay}
             onChange={(e) => setDelay(Number(e.target.value))}
@@ -414,7 +425,7 @@ export function Header() {
             style={{ accentColor: colorScheme.accent }}
           />
           <span
-            className="w-12 text-xs"
+            className="w-14 text-xs"
             style={{ color: colorScheme.textMuted }}
           >
             {execution.delay}ms

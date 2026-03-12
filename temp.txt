@@ -1,0 +1,69 @@
+; Factorial Program - Computes N! (for small N, result fits in 16 bits)
+; Result stored in RESULT
+
+        ORG 000         ; Start at memory location 0
+
+START,  LDA N           ; Load N into AC
+        SZA             ; Skip next if AC == 0 (0! = 1)
+        BUN LOOP        ; If N != 0, go to loop
+        LDA ONE         ; AC = 1 (0! = 1)
+        STA RESULT      ; Store 1 in RESULT
+        BUN END         ; Jump to end
+
+LOOP,   LDA RESULT      ; Load current result into AC
+        MUL             ; (Pseudo) - we use repeated addition below
+
+; Since MUL doesn't exist, we implement RESULT = RESULT * N
+; using a subtract-and-accumulate loop
+
+MSTART, LDA N           ; Load N (current multiplier)
+        SZA             ; If N = 0, done multiplying
+        BUN MULT        ; Go to multiply routine
+        BUN DONE        ; Done
+
+MULT,   LDA CTR         ; Load counter
+        STA CTR         ; reset
+; ----- Multiply RESULT * N using repeated addition -----
+
+        LDA N           ; Load N into AC
+        STA CTR         ; CTR = N (loop counter)
+        LDA ZERO        ; AC = 0
+        STA TEMP        ; TEMP = 0 (accumulator for multiplication)
+
+ADDLP,  LDA TEMP        ; Load TEMP
+        ADD RESULT      ; Add RESULT to TEMP
+        STA TEMP        ; Store back
+        LDA CTR         ; Load counter
+        ISZ CTR         ; Increment CTR, skip if zero
+        BUN ADDLP       ; Repeat loop
+
+        LDA TEMP        ; Load multiplication result
+        STA RESULT      ; RESULT = old RESULT * N
+
+        LDA N           ; Load N
+        CMA             ; Complement AC
+        INC             ; AC = -N (two's complement)
+        ADD N           ; This gives N-1... 
+
+; Cleaner decrement of N:
+        LDA N           ; Load N
+        ADD NEGONE      ; N = N - 1
+        STA N           ; Store decremented N
+        SZA             ; If N == 0, skip next
+        BUN MSTART      ; Repeat with new N
+
+DONE,   LDA RESULT      ; Final result in AC
+        STA RESULT      ; (already stored)
+
+END,    HLT             ; Halt
+
+; ---- Data Section ----
+N,      DEC 5           ; Input: compute 5!
+RESULT, DEC 1           ; Starts at 1 (multiplicative identity)
+TEMP,   DEC 0           ; Temporary multiplication accumulator
+CTR,    DEC 0           ; Loop counter
+ZERO,   DEC 0           ; Constant 0
+ONE,    DEC 1           ; Constant 1
+NEGONE, DEC -1          ; Constant -1
+
+        END

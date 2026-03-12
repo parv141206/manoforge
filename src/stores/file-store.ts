@@ -9,6 +9,11 @@ export interface FileItem {
   content: string;
 }
 
+export interface AddressInfo {
+  label?: string;
+  instruction?: string;
+}
+
 export interface ExecutionState {
   isRunning: boolean;
   isAssembled: boolean;
@@ -17,6 +22,7 @@ export interface ExecutionState {
   notations: string[];
   machineCode: string[];
   addressToLine: Record<number, number>;
+  addressInfo: Record<number, AddressInfo>;
 }
 
 export interface Registers {
@@ -60,6 +66,7 @@ export interface FileStore {
   clearNotations: () => void;
   setMachineCode: (code: string[]) => void;
   setAddressToLine: (mapping: Record<number, number>) => void;
+  setAddressInfo: (info: Record<number, AddressInfo>) => void;
 
   setRegister: (key: keyof Registers, value: number) => void;
   resetRegisters: () => void;
@@ -114,6 +121,7 @@ export const useFileStore = create<FileStore>()(
         notations: [],
         machineCode: [],
         addressToLine: {},
+        addressInfo: {},
       },
 
       createFile: (name) => {
@@ -213,6 +221,12 @@ export const useFileStore = create<FileStore>()(
         }));
       },
 
+      setAddressInfo: (info) => {
+        set((state) => ({
+          execution: { ...state.execution, addressInfo: info },
+        }));
+      },
+
       setRegister: (key, value) => {
         set((state) => ({
           registers: { ...state.registers, [key]: value },
@@ -257,6 +271,7 @@ export const useFileStore = create<FileStore>()(
             notations: [],
             machineCode: [],
             addressToLine: {},
+            addressInfo: {},
           },
         });
       },

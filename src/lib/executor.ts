@@ -156,54 +156,48 @@ export class Executor {
   private async executeRegisterReferenceInstructions() {
     let instruction = this.IR;
     if (instruction === "7800") {
-      /** CLA: AC <- 0 */
       this.AC = "0000";
     } else if (instruction === "7400") {
-      /** CLE: E <- 0 */
       this.E = "0";
     } else if (instruction === "7200") {
-      /** CMA: AC <- ~AC */
-      console.log("hhehehhehehehehheheheheheh")
-      console.log(numToHex(~hexToNum(this.AC) , 4))
-      this.AC = numToHex(~hexToNum(this.AC), 4);
+      this.AC = numToHex(~hexToNum(this.AC) & 0xffff, 4);
     } else if (instruction === "7100") {
-      /** CME: E <- ~E */
       this.E = this.E === "0" ? "1" : "0";
     } else if (instruction === "7080") {
-      /** CIR: AC <- (E, AC) >> 1, E <- AC[0] */
-      let newE = this.AC.charAt(3);
-      this.AC = this.E + this.AC.slice(0, 3);
-      this.E = newE;
+      let acVal = hexToNum(this.AC);
+      let eVal = parseInt(this.E, 10);
+      let lsb = acVal & 1;
+      let newAc = (acVal >> 1) | (eVal << 15);
+      this.AC = numToHex(newAc & 0xffff, 4);
+      this.E = lsb.toString();
     } else if (instruction === "7040") {
-      /** CIL: AC <- (AC, E) << 1, E <- AC[3] */
-      let newE = this.AC.charAt(0);
-      this.AC = this.AC.slice(1) + this.E;
-      this.E = newE;
+      let acVal = hexToNum(this.AC);
+      let eVal = parseInt(this.E, 10);
+      let msb = (acVal >> 15) & 1;
+      let newAc = ((acVal << 1) | eVal) & 0xffff;
+      this.AC = numToHex(newAc, 4);
+      this.E = msb.toString();
     } else if (instruction === "7020") {
-      /** INC: AC <- AC + 1 */
       this.AC = numToHex((hexToNum(this.AC) + 1) & 0xffff, 4);
     } else if (instruction === "7010") {
-      /** SPA: if AC[0] == 0 then PC <- PC + 1 */
-      if (this.AC.charAt(0) === "0") {
+      let acVal = hexToNum(this.AC);
+      if ((acVal & 0x8000) === 0 && acVal !== 0) {
         this.PC = numToHex(hexToNum(this.PC) + 1, 1);
       }
     } else if (instruction === "7008") {
-      /** SNA: if AC[0] == 1 then PC <- PC + 1 */
-      if (this.AC.charAt(0) === "1") {
+      let acVal = hexToNum(this.AC);
+      if ((acVal & 0x8000) !== 0) {
         this.PC = numToHex(hexToNum(this.PC) + 1, 1);
       }
     } else if (instruction === "7004") {
-      /** SZA: if AC == 0 then PC <- PC + 1 */
-      if (this.AC === "0000") {
+      if (hexToNum(this.AC) === 0) {
         this.PC = numToHex(hexToNum(this.PC) + 1, 1);
       }
     } else if (instruction === "7002") {
-      /** SZE: if E == 0 then PC <- PC + 1 */
       if (this.E === "0") {
         this.PC = numToHex(hexToNum(this.PC) + 1, 1);
       }
     } else if (instruction === "7001") {
-      /** HLT: halt the execution */
     }
     await this.updateNotation(
       `Executed register reference instruction: instruction=${instruction}`,

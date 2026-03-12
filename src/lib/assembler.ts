@@ -19,13 +19,14 @@ export class Assembler {
   ast: ASTNode[];
   /** represents the symbol table, each label assigned to its corresponding address(hex) */
   symbolTable: Map<string, number> = new Map();
-  /** represents the machine code which is finally generated */
+  /** machine code which is finally generated */
   machineCode: string[] = [];
   /** mapping from memory address to machine code */
   addressToCode: Map<number, string> = new Map();
-  /** mapping from memory address to source line number (0-indexed) */
+  /** mapping from memory address to line number (0-indexed) */
   addressToLine: Map<number, number> = new Map();
-  /** location counter */
+  addressInfo: Map<number, { label?: string; instruction?: string }> =
+    new Map();
   locationCounter: number = 0;
   /** starting address for execution */
   startAddress: number = 0;
@@ -69,9 +70,21 @@ export class Assembler {
         continue;
       }
       let machineCode = "";
+      let instr = "";
+      let label: string | undefined;
+
       if (node.type === "Instruction") {
         let instruction = node.opcode as keyof typeof OPCODES;
         let instructionCode = OPCODES[instruction];
+        label = node.label ?? undefined;
+
+        if (node.operand) {
+          instr = node.indirect
+            ? `${instruction} ${node.operand} I`
+            : `${instruction} ${node.operand}`;
+        } else {
+          instr = instruction;
+        }
 
         /** now i have the instruction code.
          * but it could be anything.
@@ -83,7 +96,6 @@ export class Assembler {
          */
 
         if (instructionCode.startsWith("0")) {
-          // memory reference instruction
           let instructionNumber = hexToNum(instructionCode);
           if (node.indirect) {
             instructionNumber += 8;
@@ -95,14 +107,11 @@ export class Assembler {
           if (operandAddress === undefined) {
             throw new Error(`Undefined symbol: ${node.operand}`);
           }
-          // pushing the address, it would be label, so i guess i need to look into the table , get the address, convert it to string and push it
           let add = numToHex(operandAddress, 3);
           machineCode = numToHex(instructionNumber, 1) + add;
         } else if (instructionCode.startsWith("7")) {
-          // register reference instruction
           machineCode = instructionCode;
         } else if (instructionCode.startsWith("F")) {
-          // input output instruction
           machineCode = instructionCode;
         } else {
           throw new Error("Invalid instruction code");
@@ -110,9 +119,15 @@ export class Assembler {
       } else if (node.type === "Data") {
         let value = parseValueByDatatype(node.value, node.datatype);
         machineCode = numToHex(value, 4);
+        label = node.label;
+        instr = `${node.datatype} ${node.value}`;
       }
       if (machineCode) {
         this.addressToCode.set(this.locationCounter, machineCode);
+        this.addressInfo.set(this.locationCounter, {
+          label,
+          instruction: instr,
+        });
         this.machineCode.push(machineCode);
         this.locationCounter += 1;
       }
