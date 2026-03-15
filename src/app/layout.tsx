@@ -104,7 +104,7 @@ export default function RootLayout({
       <head>
         <meta
           name="google-site-verification"
-          content="Plv7-l-9fD_Sg9-FqpB2yaOhOaV5njShdmBquxUa4fU"
+          content="ZrgM_UsvqhznNkb_7uUa0YA3JVqi7oEngyM3y1IvW9E"
         />
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link
