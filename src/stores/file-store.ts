@@ -47,6 +47,7 @@ export interface Registers {
 export interface FileStore {
   files: FileItem[];
   activeFileId: string | null;
+  openFileIds: string[];
   memory: number[];
   registers: Registers;
   execution: ExecutionState;
@@ -56,7 +57,12 @@ export interface FileStore {
   renameFile: (id: string, newName: string) => void;
   updateFileContent: (id: string, content: string) => void;
   setActiveFile: (id: string | null) => void;
+  closeOpenFile: (id: string) => void;
+  reorderOpenFiles: (draggedId: string, targetId: string) => void;
   downloadFile: (id: string) => void;
+  downloadFiles: (ids: string[]) => void;
+  createFiles: (files: { name: string; content: string }[]) => void;
+  deleteFiles: (ids: string[]) => void;
 
   setDelay: (delay: number) => void;
   setRunning: (isRunning: boolean) => void;
@@ -111,6 +117,7 @@ export const useFileStore = create<FileStore>()(
         },
       ],
       activeFileId: "default-file",
+      openFileIds: ["default-file"],
       memory: new Array<number>(4096).fill(0),
       registers: { ...defaultRegisters },
       execution: {
@@ -133,17 +140,32 @@ export const useFileStore = create<FileStore>()(
         set((state) => ({
           files: [...state.files, newFile],
           activeFileId: newFile.id,
+          openFileIds: state.openFileIds.includes(newFile.id)
+            ? state.openFileIds
+            : [...state.openFileIds, newFile.id],
         }));
       },
 
       deleteFile: (id) => {
         set((state) => {
           const newFiles = state.files.filter((f) => f.id !== id);
+          const newOpenFileIds = state.openFileIds.filter(
+            (openId) => openId !== id,
+          );
           const newActiveId =
             state.activeFileId === id
               ? (newFiles[0]?.id ?? null)
               : state.activeFileId;
-          return { files: newFiles, activeFileId: newActiveId };
+          return {
+            files: newFiles,
+            activeFileId: newActiveId,
+            openFileIds:
+              newOpenFileIds.length > 0
+                ? newOpenFileIds
+                : newFiles[0]
+                  ? [newFiles[0].id]
+                  : [],
+          };
         });
       },
 
@@ -163,7 +185,50 @@ export const useFileStore = create<FileStore>()(
       },
 
       setActiveFile: (id) => {
-        set({ activeFileId: id });
+        set((state) => ({
+          activeFileId: id,
+          openFileIds:
+            id && !state.openFileIds.includes(id)
+              ? [...state.openFileIds, id]
+              : state.openFileIds,
+        }));
+      },
+
+      closeOpenFile: (id) => {
+        set((state) => {
+          const nextOpen = state.openFileIds.filter((openId) => openId !== id);
+          if (nextOpen.length === 0) {
+            const fallback = state.files.find((f) => f.id !== id)?.id;
+            return {
+              openFileIds: fallback ? [fallback] : [],
+              activeFileId: fallback ?? null,
+            };
+          }
+
+          const nextActive =
+            state.activeFileId === id
+              ? (nextOpen[nextOpen.length - 1] ?? null)
+              : state.activeFileId;
+
+          return {
+            openFileIds: nextOpen,
+            activeFileId: nextActive,
+          };
+        });
+      },
+
+      reorderOpenFiles: (draggedId, targetId) => {
+        if (draggedId === targetId) return;
+        set((state) => {
+          const from = state.openFileIds.indexOf(draggedId);
+          const to = state.openFileIds.indexOf(targetId);
+          if (from < 0 || to < 0) return {};
+          const next = [...state.openFileIds];
+          const [moved] = next.splice(from, 1);
+          if (!moved) return {};
+          next.splice(to, 0, moved);
+          return { openFileIds: next };
+        });
       },
 
       downloadFile: (id) => {
@@ -178,8 +243,86 @@ export const useFileStore = create<FileStore>()(
         URL.revokeObjectURL(url);
       },
 
+      downloadFiles: (ids) => {
+        const files = get().files.filter((f) => ids.includes(f.id));
+        for (const file of files) {
+          const blob = new Blob([file.content], { type: "text/plain" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = file.name;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+      },
+
+      createFiles: (incomingFiles) => {
+        if (incomingFiles.length === 0) return;
+        const existing = new Set(get().files.map((f) => f.name.toLowerCase()));
+        const created: FileItem[] = [];
+
+        for (const item of incomingFiles) {
+          const baseName = item.name.endsWith(".asm")
+            ? item.name
+            : `${item.name}.asm`;
+          let finalName = baseName;
+          let n = 1;
+          while (existing.has(finalName.toLowerCase())) {
+            const dot = baseName.lastIndexOf(".");
+            const stem = dot >= 0 ? baseName.slice(0, dot) : baseName;
+            const ext = dot >= 0 ? baseName.slice(dot) : "";
+            finalName = `${stem} (${n})${ext}`;
+            n += 1;
+          }
+          existing.add(finalName.toLowerCase());
+          created.push({
+            id: generateId(),
+            name: finalName,
+            content: item.content,
+          });
+        }
+
+        set((state) => ({
+          files: [...state.files, ...created],
+          activeFileId: created[0]?.id ?? state.activeFileId,
+          openFileIds: [
+            ...state.openFileIds,
+            ...created
+              .map((f) => f.id)
+              .filter((id) => !state.openFileIds.includes(id)),
+          ],
+        }));
+      },
+
+      deleteFiles: (ids) => {
+        if (ids.length === 0) return;
+        const idSet = new Set(ids);
+        set((state) => {
+          const newFiles = state.files.filter((f) => !idSet.has(f.id));
+          const newOpenFileIds = state.openFileIds.filter(
+            (openId) => !idSet.has(openId),
+          );
+          const newActiveId =
+            state.activeFileId && idSet.has(state.activeFileId)
+              ? (newFiles[0]?.id ?? null)
+              : state.activeFileId;
+          return {
+            files: newFiles,
+            activeFileId: newActiveId,
+            openFileIds:
+              newOpenFileIds.length > 0
+                ? newOpenFileIds
+                : newFiles[0]
+                  ? [newFiles[0].id]
+                  : [],
+          };
+        });
+      },
+
       setDelay: (delay) => {
-        set((state) => ({ execution: { ...state.execution, delay } }));
+        set((state) => ({
+          execution: { ...state.execution, delay: Math.max(1, delay) },
+        }));
       },
 
       setRunning: (isRunning) => {
@@ -281,8 +424,27 @@ export const useFileStore = create<FileStore>()(
       partialize: (state) => ({
         files: state.files,
         activeFileId: state.activeFileId,
+        openFileIds: state.openFileIds,
         execution: { delay: state.execution.delay },
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state?.execution) {
+          state.execution.delay = Math.max(1, state.execution.delay ?? 500);
+        }
+        if (state) {
+          const ids = new Set(state.files.map((f) => f.id));
+          state.openFileIds = (state.openFileIds ?? []).filter((id) =>
+            ids.has(id),
+          );
+          if (state.openFileIds.length === 0 && state.files[0]) {
+            state.openFileIds = [state.files[0].id];
+          }
+          if (state.activeFileId && !ids.has(state.activeFileId)) {
+            state.activeFileId =
+              state.openFileIds[0] ?? state.files[0]?.id ?? null;
+          }
+        }
+      },
     },
   ),
 );

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useFileStore } from "@/stores/file-store";
 import { useThemeStore } from "@/stores/theme-store";
+import { useUiStore } from "@/stores/ui-store";
 import { VscSymbolNumeric, VscCode } from "react-icons/vsc";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 
@@ -26,6 +27,7 @@ const formatValue = (value: number, mode: DisplayMode, bits = 16): string => {
 function RegistersPanelInner() {
   const { registers, execution } = useFileStore();
   const { colorScheme } = useThemeStore();
+  const { layoutMode } = useUiStore();
   const [displayMode, setDisplayMode] = useState<DisplayMode>("HEX");
   const [activeTab, setActiveTab] = useState<TabMode>("registers");
 
@@ -67,7 +69,7 @@ function RegistersPanelInner() {
 
   return (
     <div
-      className="flex h-full flex-col overflow-hidden rounded-lg"
+      className={`flex h-full flex-col overflow-hidden ${layoutMode === "compact" ? "rounded-none" : "rounded-lg"}`}
       style={{ backgroundColor: colorScheme.panel }}
     >
       <div
@@ -240,31 +242,55 @@ function RegistersPanelInner() {
                 className="flex min-h-0 flex-1 flex-col border-t pt-1.5"
                 style={{ borderColor: colorScheme.border }}
               >
-                <span
-                  className="px-1 text-[10px] font-medium"
-                  style={{ color: colorScheme.textMuted }}
+                <div className="flex items-center justify-between px-1">
+                  <span
+                    className="text-[10px] font-semibold tracking-wide"
+                    style={{ color: colorScheme.textMuted }}
+                  >
+                    EXECUTION LOG
+                  </span>
+                  <span
+                    className="font-mono text-[9px]"
+                    style={{ color: colorScheme.textMuted }}
+                  >
+                    {execution.notations.length}
+                  </span>
+                </div>
+                <div
+                  className="mt-1 flex-1 overflow-y-auto rounded border"
+                  style={{
+                    borderColor: colorScheme.border,
+                    backgroundColor: colorScheme.sidebar,
+                  }}
                 >
-                  LOG
-                </span>
-                <div className="mt-1 flex-1 space-y-0.5 overflow-y-auto">
-                  {execution.notations.map((note, i) => (
-                    <div
-                      key={i}
-                      className="rounded px-1 py-0.5 font-mono text-[9px]"
-                      style={{
-                        backgroundColor: note.startsWith("T")
-                          ? colorScheme.active
-                          : colorScheme.sidebar,
-                        color: note.startsWith("Error")
-                          ? "#ef4444"
-                          : note.startsWith("T")
-                            ? colorScheme.text
-                            : colorScheme.textMuted,
-                      }}
-                    >
-                      {note}
-                    </div>
-                  ))}
+                  {execution.notations.map((note, i) => {
+                    const isError = note.startsWith("Error");
+                    const isStep = note.startsWith("T");
+                    return (
+                      <div
+                        key={i}
+                        className="px-1.5 py-1 font-mono text-[9px] leading-4"
+                        style={{
+                          borderBottom:
+                            i === execution.notations.length - 1
+                              ? "none"
+                              : `1px solid ${colorScheme.border}`,
+                          backgroundColor: isError
+                            ? "#ef44441a"
+                            : isStep
+                              ? `${colorScheme.accent}12`
+                              : "transparent",
+                          color: isError
+                            ? "#ef4444"
+                            : isStep
+                              ? colorScheme.text
+                              : colorScheme.textMuted,
+                        }}
+                      >
+                        {note}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

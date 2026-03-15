@@ -36,12 +36,14 @@ class ParseError extends Error {
 export class Parser {
   private state: ParserState;
   private lines: string[];
-  constructor(tokens: Token[], source: string) {
+  private silent: boolean;
+  constructor(tokens: Token[], source: string, options?: { silent?: boolean }) {
     this.state = {
       tokens,
       position: 0,
     };
     this.lines = source.split("\n").map((line) => line.trim());
+    this.silent = options?.silent ?? false;
   }
 
   /**
@@ -398,7 +400,7 @@ export class Parser {
           ast.push(astNode);
         }
       } catch (e) {
-        if (e instanceof ParseError) {
+        if (e instanceof ParseError && !this.silent) {
           // again , sexy errrrrrorrrrrrrrrrrrrrrrrrrrrrrrr
           this.formatError(e);
         }

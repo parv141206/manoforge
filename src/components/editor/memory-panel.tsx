@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { useFileStore } from "@/stores/file-store";
 import { useThemeStore } from "@/stores/theme-store";
+import { useUiStore } from "@/stores/ui-store";
 import { VscSearch, VscChevronLeft, VscChevronRight } from "react-icons/vsc";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 
@@ -11,10 +12,15 @@ const ROWS_PER_PAGE = 16;
 function MemoryPanelInner() {
   const { memory, execution, registers } = useFileStore();
   const { colorScheme } = useThemeStore();
+  const { layoutMode } = useUiStore();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [cols, setCols] = useState(16);
   const [isMobile, setIsMobile] = useState(false);
+  const gridScrollRef = useRef<HTMLDivElement>(null);
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const gridScrollPosRef = useRef({ top: 0, left: 0 });
+  const listScrollPosRef = useRef({ top: 0, left: 0 });
 
   const addressInfo = execution.addressInfo;
 
@@ -59,6 +65,17 @@ function MemoryPanelInner() {
       .sort((a, b) => a - b);
   }, [addressInfo]);
 
+  useLayoutEffect(() => {
+    if (gridScrollRef.current) {
+      gridScrollRef.current.scrollTop = gridScrollPosRef.current.top;
+      gridScrollRef.current.scrollLeft = gridScrollPosRef.current.left;
+    }
+    if (listScrollRef.current) {
+      listScrollRef.current.scrollTop = listScrollPosRef.current.top;
+      listScrollRef.current.scrollLeft = listScrollPosRef.current.left;
+    }
+  });
+
   const GridView = () => (
     <div className="flex h-full flex-col">
       <div
@@ -81,7 +98,7 @@ function MemoryPanelInner() {
             <VscChevronLeft size={12} />
           </button>
           <span
-            className="min-w-[50px] text-center font-mono text-[9px]"
+            className="min-w-12.5 text-center font-mono text-[9px]"
             style={{ color: colorScheme.textMuted }}
           >
             {startAddr.toString(16).toUpperCase().padStart(3, "0")} -{" "}
@@ -100,7 +117,14 @@ function MemoryPanelInner() {
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-auto">
+      <div
+        ref={gridScrollRef}
+        className="flex-1 overflow-auto"
+        onScroll={(e) => {
+          gridScrollPosRef.current.top = e.currentTarget.scrollTop;
+          gridScrollPosRef.current.left = e.currentTarget.scrollLeft;
+        }}
+      >
         <table className="w-full border-collapse font-mono text-[10px]">
           <thead>
             <tr>
@@ -205,7 +229,14 @@ function MemoryPanelInner() {
           {programAddresses.length} addr
         </span>
       </div>
-      <div className="flex-1 overflow-auto">
+      <div
+        ref={listScrollRef}
+        className="flex-1 overflow-auto"
+        onScroll={(e) => {
+          listScrollPosRef.current.top = e.currentTarget.scrollTop;
+          listScrollPosRef.current.left = e.currentTarget.scrollLeft;
+        }}
+      >
         <div className="font-mono text-[11px]">
           {programAddresses.length === 0 ? (
             <div
@@ -228,7 +259,19 @@ function MemoryPanelInner() {
                     className="sticky top-0 z-10 px-2 py-1 text-left text-[10px]"
                     style={{ backgroundColor: colorScheme.panel }}
                   >
-                    Code
+                    Hex
+                  </th>
+                  <th
+                    className="sticky top-0 z-10 px-2 py-1 text-left text-[10px]"
+                    style={{ backgroundColor: colorScheme.panel }}
+                  >
+                    Dec
+                  </th>
+                  <th
+                    className="sticky top-0 z-10 px-2 py-1 text-left text-[10px]"
+                    style={{ backgroundColor: colorScheme.panel }}
+                  >
+                    Bin
                   </th>
                   <th
                     className="sticky top-0 z-10 px-2 py-1 text-left text-[10px]"
@@ -247,6 +290,12 @@ function MemoryPanelInner() {
               <tbody>
                 {programAddresses.map((addr) => {
                   const value = memory[addr] ?? 0;
+                  const hexValue = value
+                    .toString(16)
+                    .toUpperCase()
+                    .padStart(4, "0");
+                  const decValue = value.toString(10);
+                  const binValue = value.toString(2).padStart(16, "0");
                   const info = addressInfo?.[addr];
                   const isPC = registers.PC === addr;
                   const isHighlighted = searchAddress === addr;
@@ -273,7 +322,20 @@ function MemoryPanelInner() {
                         className="px-2 py-0.5"
                         style={{ color: colorScheme.text }}
                       >
-                        {value.toString(16).toUpperCase().padStart(4, "0")}
+                        {hexValue}
+                      </td>
+                      <td
+                        className="px-2 py-0.5"
+                        style={{ color: colorScheme.text }}
+                      >
+                        {decValue}
+                      </td>
+                      <td
+                        className="max-w-40 px-2 py-0.5 font-mono text-[10px]"
+                        style={{ color: colorScheme.textMuted }}
+                        title={binValue}
+                      >
+                        {binValue}
                       </td>
                       <td
                         className="px-2 py-0.5"
@@ -300,7 +362,7 @@ function MemoryPanelInner() {
 
   return (
     <div
-      className="flex h-full flex-col overflow-hidden rounded-lg"
+      className={`flex h-full flex-col overflow-hidden ${layoutMode === "compact" ? "rounded-none" : "rounded-lg"}`}
       style={{ backgroundColor: colorScheme.panel }}
     >
       {/* Search bar */}
@@ -333,12 +395,12 @@ function MemoryPanelInner() {
           className={`overflow-hidden ${isMobile ? "h-1/2 border-b" : "w-1/2 border-r"}`}
           style={{ borderColor: colorScheme.border }}
         >
-          <GridView />
+          {GridView()}
         </div>
 
         {/* List view */}
         <div className={`overflow-hidden ${isMobile ? "h-1/2" : "w-1/2"}`}>
-          <ListView />
+          {ListView()}
         </div>
       </div>
     </div>

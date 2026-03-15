@@ -3,7 +3,11 @@
 import React from "react";
 import { useFileStore } from "@/stores/file-store";
 import { useThemeStore } from "@/stores/theme-store";
-import { VscFile } from "react-icons/vsc";
+import { useUiStore } from "@/stores/ui-store";
+import { Parser } from "@/lib/parser";
+import { tokenize } from "@/lib/tokenizer";
+import { VscFile, VscClose } from "react-icons/vsc";
+import { TbAssembly } from "react-icons/tb";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 
 const INSTRUCTIONS = [
@@ -139,6 +143,11 @@ interface Suggestion {
 
 const LABEL_COLUMN = 8;
 
+interface CodeEditorProps {
+  fileIdOverride?: string;
+  onExternalFileDrop?: (fileId: string) => void;
+}
+
 function formatAssemblyCode(code: string): string {
   const lines = code.split("\n");
   const formatted: string[] = [];
@@ -173,9 +182,22 @@ function formatAssemblyCode(code: string): string {
   return formatted.join("\n");
 }
 
-function CodeEditorInner() {
-  const { files, activeFileId, updateFileContent, execution } = useFileStore();
+function CodeEditorInner({
+  fileIdOverride,
+  onExternalFileDrop,
+}: CodeEditorProps) {
+  const {
+    files,
+    openFileIds,
+    activeFileId: storeActiveFileId,
+    setActiveFile,
+    closeOpenFile,
+    reorderOpenFiles,
+    updateFileContent,
+    execution,
+  } = useFileStore();
   const { colorScheme } = useThemeStore();
+  const { layoutMode } = useUiStore();
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const highlightRef = React.useRef<HTMLDivElement>(null);
   const lineNumbersRef = React.useRef<HTMLDivElement>(null);
@@ -184,7 +206,13 @@ function CodeEditorInner() {
   const [suggestions, setSuggestions] = React.useState<Suggestion[]>([]);
   const [selectedIndex, setSelectedIndex] = React.useState(0);
   const [cursorPosition, setCursorPosition] = React.useState({ x: 0, y: 0 });
+  const [liveError, setLiveError] = React.useState<{
+    line: number;
+    column: number;
+    message: string;
+  } | null>(null);
 
+  const activeFileId = fileIdOverride ?? storeActiveFileId;
   const activeFile = files?.find((f) => f.id === activeFileId);
   const content = activeFile?.content ?? "";
   const lines = content.split("\n");
@@ -199,6 +227,41 @@ function CodeEditorInner() {
     }
     return found;
   }, [lines]);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!content.trim()) {
+        setLiveError(null);
+        return;
+      }
+
+      try {
+        const parser = new Parser(tokenize(content), content, { silent: true });
+        parser.parse();
+        setLiveError(null);
+      } catch (err) {
+        const maybe = err as {
+          message?: string;
+          line?: number;
+          column?: number;
+        };
+        if (
+          typeof maybe.line === "number" &&
+          typeof maybe.column === "number"
+        ) {
+          setLiveError({
+            line: maybe.line,
+            column: maybe.column,
+            message: maybe.message ?? "Syntax error",
+          });
+          return;
+        }
+        setLiveError(null);
+      }
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, [content]);
 
   const getSuggestions = (word: string): Suggestion[] => {
     if (!word || word.length < 1) return [];
@@ -598,23 +661,106 @@ function CodeEditorInner() {
 
   return (
     <div
-      className="flex h-full flex-col overflow-hidden rounded-lg"
+      className={`flex h-full flex-col overflow-hidden ${layoutMode === "compact" ? "rounded-none" : "rounded-lg"}`}
       style={{ backgroundColor: colorScheme.panel }}
     >
       <div
-        className="flex items-center border-b px-2"
+        className="flex items-center gap-1 overflow-x-auto border-b px-2 py-1"
         style={{ borderColor: colorScheme.border }}
+        onDragOver={(e) => {
+          const hasFile =
+            e.dataTransfer.types.includes("application/x-mano-file-id") ||
+            e.dataTransfer.types.includes("application/x-mano-tab-id") ||
+            e.dataTransfer.types.includes("text/plain");
+          if (!hasFile) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+        }}
+        onDrop={(e) => {
+          const droppedFileId =
+            e.dataTransfer.getData("application/x-mano-file-id") ||
+            e.dataTransfer.getData("application/x-mano-tab-id") ||
+            e.dataTransfer.getData("text/plain");
+          if (!droppedFileId) return;
+          e.preventDefault();
+          if (onExternalFileDrop) {
+            onExternalFileDrop(droppedFileId);
+          } else {
+            setActiveFile(droppedFileId);
+          }
+        }}
       >
-        <div
-          className="flex items-center gap-2 rounded-t px-3 py-1.5 text-sm"
-          style={{
-            backgroundColor: colorScheme.active,
-            color: colorScheme.text,
-          }}
-        >
-          <VscFile size={12} />
-          <span>{activeFile.name}</span>
-        </div>
+        {(fileIdOverride
+          ? [activeFile]
+          : openFileIds
+              .map((id) => files.find((f) => f.id === id))
+              .filter((f): f is NonNullable<typeof f> => Boolean(f))
+        ).map((file) => {
+          const isActive = file.id === activeFileId;
+          return (
+            <div
+              key={file.id}
+              onClick={() => setActiveFile(file.id)}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = "copyMove";
+                e.dataTransfer.setData("application/x-mano-file-id", file.id);
+                e.dataTransfer.setData("application/x-mano-tab-id", file.id);
+                e.dataTransfer.setData("text/plain", file.id);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const draggedTabId = e.dataTransfer.getData(
+                  "application/x-mano-tab-id",
+                );
+                if (draggedTabId) {
+                  reorderOpenFiles(draggedTabId, file.id);
+                  return;
+                }
+                const droppedFileId =
+                  e.dataTransfer.getData("application/x-mano-file-id") ||
+                  e.dataTransfer.getData("text/plain");
+                if (!droppedFileId) return;
+                if (onExternalFileDrop) {
+                  onExternalFileDrop(droppedFileId);
+                } else {
+                  setActiveFile(droppedFileId);
+                }
+              }}
+              className="group flex max-w-56 cursor-pointer items-center gap-2 rounded-t px-3 py-1.5 text-sm transition-colors"
+              style={{
+                backgroundColor: isActive
+                  ? colorScheme.active
+                  : colorScheme.sidebar,
+                color: isActive ? colorScheme.text : colorScheme.textMuted,
+                border: `1px solid ${colorScheme.border}`,
+                borderBottom: "none",
+              }}
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <TbAssembly size={12} />
+                <span className="truncate">{file.name}</span>
+              </div>
+              {!fileIdOverride && openFileIds.length > 1 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeOpenFile(file.id);
+                  }}
+                  className="opacity-70 transition-opacity hover:opacity-100"
+                  style={{ color: colorScheme.textMuted }}
+                  title="Close"
+                >
+                  <VscClose size={12} />
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <div className="relative flex flex-1 overflow-hidden">
@@ -631,9 +777,12 @@ function CodeEditorInner() {
                 backgroundColor: isCurrentLine(i)
                   ? `${colorScheme.accent}40`
                   : "transparent",
-                color: isCurrentLine(i)
-                  ? colorScheme.accent
-                  : colorScheme.textMuted,
+                color:
+                  liveError?.line === i + 1
+                    ? "#ef4444"
+                    : isCurrentLine(i)
+                      ? colorScheme.accent
+                      : colorScheme.textMuted,
               }}
             >
               {i + 1}
@@ -654,7 +803,16 @@ function CodeEditorInner() {
                   backgroundColor: isCurrentLine(i)
                     ? `${colorScheme.accent}20`
                     : "transparent",
+                  textDecoration:
+                    liveError?.line === i + 1
+                      ? "underline wavy #ef4444"
+                      : "none",
+                  textUnderlineOffset:
+                    liveError?.line === i + 1 ? "3px" : undefined,
                 }}
+                title={
+                  liveError?.line === i + 1 ? liveError.message : undefined
+                }
               >
                 {highlightLine(line, colorScheme.syntax)}
                 {"\n"}
@@ -731,10 +889,10 @@ function CodeEditorInner() {
   );
 }
 
-export function CodeEditor() {
+export function CodeEditor(props: CodeEditorProps) {
   return (
     <ErrorBoundary>
-      <CodeEditorInner />
+      <CodeEditorInner {...props} />
     </ErrorBoundary>
   );
 }

@@ -142,28 +142,54 @@ export const colorSchemes = {
 
 export type SchemeName = keyof typeof colorSchemes;
 
+const getAmoledVariant = (scheme: ColorScheme): ColorScheme => ({
+  ...scheme,
+  background: "#000000",
+  panel: "#050505",
+  sidebar: "#000000",
+  border: "#161616",
+  hover: "#0d0d0d",
+  active: "#1b1b1b",
+});
+
+const resolveScheme = (name: SchemeName, amoled: boolean): ColorScheme => {
+  const base = colorSchemes[name] as ColorScheme;
+  return amoled ? getAmoledVariant(base) : base;
+};
+
 interface ThemeStore {
   schemeName: SchemeName;
   colorScheme: ColorScheme;
+  amoled: boolean;
   setScheme: (name: SchemeName) => void;
+  setAmoled: (enabled: boolean) => void;
 }
 
 export const useThemeStore = create<ThemeStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       schemeName: "dracula",
-      colorScheme: colorSchemes.dracula,
+      colorScheme: resolveScheme("dracula", false),
+      amoled: false,
       setScheme: (name) =>
         set({
           schemeName: name,
-          colorScheme: colorSchemes[name],
+          colorScheme: resolveScheme(name, get().amoled),
         }),
+      setAmoled: (enabled) =>
+        set((state) => ({
+          amoled: enabled,
+          colorScheme: resolveScheme(state.schemeName, enabled),
+        })),
     }),
     {
       name: "mano-forge-theme",
       onRehydrateStorage: () => (state) => {
         if (state?.schemeName) {
-          state.colorScheme = colorSchemes[state.schemeName];
+          state.colorScheme = resolveScheme(
+            state.schemeName,
+            state.amoled ?? false,
+          );
         }
       },
     },

@@ -7,6 +7,7 @@ import {
   colorSchemes,
   type SchemeName,
 } from "@/stores/theme-store";
+import { useUiStore } from "@/stores/ui-store";
 import {
   VscDebugStart,
   VscDebugStepOver,
@@ -43,7 +44,9 @@ export function Header() {
     resetExecution,
   } = useFileStore();
 
-  const { colorScheme, schemeName, setScheme } = useThemeStore();
+  const { colorScheme, schemeName, setScheme, amoled, setAmoled } =
+    useThemeStore();
+  const { layoutMode, setLayoutMode } = useUiStore();
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const [showDocsModal, setShowDocsModal] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
@@ -72,6 +75,34 @@ export function Header() {
   }, []);
 
   const activeFile = files.find((f) => f.id === activeFileId);
+
+  const emitAssembleError = (error: unknown) => {
+    const fallback = error instanceof Error ? error.message : "Assembly failed";
+    addNotation(`Error: ${fallback}`);
+
+    const maybe = error as {
+      message?: string;
+      line?: number;
+      column?: number;
+      file?: string;
+    };
+
+    if (typeof maybe.line !== "number" || typeof maybe.column !== "number") {
+      return;
+    }
+
+    const source = activeFile?.content ?? "";
+    const lines = source.split("\n");
+    const lineText = lines[maybe.line - 1] ?? "";
+    const pointer = " ".repeat(Math.max(0, maybe.column - 1)) + "^";
+
+    addNotation(
+      ` --> ${maybe.file ?? activeFile?.name ?? "program.asm"}:${maybe.line}:${maybe.column}`,
+    );
+    addNotation("  |");
+    addNotation(`${maybe.line} | ${lineText}`);
+    addNotation(`  | ${pointer}`);
+  };
 
   const handleAssemble = () => {
     if (!activeFile) return;
@@ -125,9 +156,7 @@ export function Header() {
       setCurrentLine(null);
       addNotation(`Assembled successfully: ${machineCodeStrings.length} words`);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Assembly failed";
-      addNotation(`Error: ${message}`);
+      emitAssembleError(error);
       setAssembled(false);
     }
   };
@@ -398,8 +427,11 @@ export function Header() {
 
   return (
     <div
-      className="flex h-full items-center justify-between rounded-lg px-2 sm:px-4"
-      style={{ backgroundColor: colorScheme.panel }}
+      className={`flex h-full items-center justify-between px-2 sm:px-4 ${layoutMode === "compact" ? "rounded-none" : "rounded-lg"}`}
+      style={{
+        backgroundColor: colorScheme.sidebar,
+        border: `1px solid ${colorScheme.border}`,
+      }}
     >
       <div className="hidden items-center gap-4 sm:flex">
         <h1
@@ -417,7 +449,7 @@ export function Header() {
           </span>
           <input
             type="range"
-            min="0"
+            min="1"
             max="5000"
             step="50"
             value={execution.delay}
@@ -511,7 +543,7 @@ export function Header() {
 
           {showThemeMenu && (
             <div
-              className="absolute top-full right-0 z-50 mt-2 min-w-35 rounded-lg py-1 shadow-xl"
+              className="absolute top-full right-0 z-50 mt-2 min-w-52 rounded-lg py-1 shadow-xl"
               style={{
                 backgroundColor: colorScheme.panel,
                 border: `1px solid ${colorScheme.border}`,
@@ -543,6 +575,76 @@ export function Header() {
                   )}
                 </button>
               ))}
+
+              <div
+                className="my-1 border-t"
+                style={{ borderColor: colorScheme.border }}
+              />
+
+              <div className="px-3 py-2">
+                <div
+                  className="mb-2 text-[11px] font-medium uppercase"
+                  style={{ color: colorScheme.textMuted }}
+                >
+                  Layout
+                </div>
+                <div
+                  className="flex items-center rounded border p-0.5"
+                  style={{ borderColor: colorScheme.border }}
+                >
+                  <button
+                    onClick={() => setLayoutMode("floating")}
+                    className="flex-1 rounded px-2 py-1 text-xs"
+                    style={{
+                      backgroundColor:
+                        layoutMode === "floating"
+                          ? colorScheme.active
+                          : "transparent",
+                      color: colorScheme.text,
+                    }}
+                  >
+                    Floating
+                  </button>
+                  <button
+                    onClick={() => setLayoutMode("compact")}
+                    className="flex-1 rounded px-2 py-1 text-xs"
+                    style={{
+                      backgroundColor:
+                        layoutMode === "compact"
+                          ? colorScheme.active
+                          : "transparent",
+                      color: colorScheme.text,
+                    }}
+                  >
+                    Compact
+                  </button>
+                </div>
+              </div>
+
+              <div className="px-3 pb-2">
+                <button
+                  onClick={() => setAmoled(!amoled)}
+                  className="flex w-full items-center justify-between rounded border px-2 py-1.5 text-xs"
+                  style={{
+                    borderColor: colorScheme.border,
+                    backgroundColor: amoled
+                      ? `${colorScheme.accent}20`
+                      : "transparent",
+                    color: colorScheme.text,
+                  }}
+                >
+                  <span>AMOLED mode</span>
+                  <span
+                    style={{
+                      color: amoled
+                        ? colorScheme.accent
+                        : colorScheme.textMuted,
+                    }}
+                  >
+                    {amoled ? "ON" : "OFF"}
+                  </span>
+                </button>
+              </div>
             </div>
           )}
         </div>
