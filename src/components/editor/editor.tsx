@@ -506,8 +506,8 @@ export function Editor() {
           Made with love by parv141206
         </a>
         <span className="hidden truncate md:block">
-          Ctrl+Shift+F format • Ctrl+/ comment • Ctrl+D duplicate • Alt+↑/↓
-          move line • Ctrl+Space suggest • Ctrl/Cmd+Wheel editor zoom
+          Ctrl+Shift+F format • Ctrl+/ comment • Ctrl+D duplicate • Alt+↑/↓ move
+          line • Ctrl+Space suggest • Ctrl/Cmd+Wheel editor zoom
         </span>
       </div>
     </div>

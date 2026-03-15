@@ -46,6 +46,25 @@ const INSTRUCTIONS = [
 
 const DIRECTIVES = ["ORG", "END", "DEC", "HEX"];
 
+const IGNORED_SUGGESTION_REFRESH_KEYS = new Set([
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+  "Shift",
+  "Control",
+  "Alt",
+  "Meta",
+  "CapsLock",
+  "Tab",
+  "Enter",
+  "Escape",
+]);
+
 function highlightLine(
   line: string,
   syntax: {
@@ -203,21 +222,21 @@ function CodeEditorInner({
     execution,
   } = useFileStore();
   const { colorScheme } = useThemeStore();
-  const {
-    layoutMode,
-    editorFontSize,
-    setEditorFontSize,
-    tabSize,
-    setTabSize,
-  } = useUiStore();
+  const { layoutMode, editorFontSize, setEditorFontSize, tabSize, setTabSize } =
+    useUiStore();
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const highlightRef = React.useRef<HTMLDivElement>(null);
   const lineNumbersRef = React.useRef<HTMLDivElement>(null);
   const measureRef = React.useRef<HTMLSpanElement>(null);
+  const suppressSuggestionsRef = React.useRef(false);
 
   const [suggestions, setSuggestions] = React.useState<Suggestion[]>([]);
   const [selectedIndex, setSelectedIndex] = React.useState(0);
-  const [cursorPosition, setCursorPosition] = React.useState({ x: 0, y: 0 });
+  const [cursorPosition, setCursorPosition] = React.useState({
+    x: 0,
+    y: 0,
+    placeAbove: false,
+  });
   const [liveError, setLiveError] = React.useState<{
     line: number;
     column: number;
@@ -244,14 +263,21 @@ function CodeEditorInner({
   const labelDiagnostics = React.useMemo(() => {
     const declared = new Map<string, number>();
     const used = new Map<string, number[]>();
-    const memoryRef = new Set(["AND", "ADD", "LDA", "STA", "BUN", "BSA", "ISZ"]);
+    const memoryRef = new Set([
+      "AND",
+      "ADD",
+      "LDA",
+      "STA",
+      "BUN",
+      "BSA",
+      "ISZ",
+    ]);
 
     for (let lineNo = 0; lineNo < lines.length; lineNo++) {
       const sourceLine = lines[lineNo] ?? "";
       const commentIdx = sourceLine.indexOf(";");
-      const code = (commentIdx >= 0
-        ? sourceLine.slice(0, commentIdx)
-        : sourceLine
+      const code = (
+        commentIdx >= 0 ? sourceLine.slice(0, commentIdx) : sourceLine
       ).trim();
       if (!code) continue;
 
@@ -311,14 +337,17 @@ function CodeEditorInner({
   const errorCount = (liveError ? 1 : 0) + labelDiagnostics.undeclared.length;
   const unusedCount = labelDiagnostics.unused.length;
 
-  const updateCursorInfo = React.useCallback((textarea: HTMLTextAreaElement) => {
-    const pos = textarea.selectionStart;
-    const before = textarea.value.slice(0, pos);
-    const parts = before.split("\n");
-    const line = parts.length;
-    const col = (parts[parts.length - 1]?.length ?? 0) + 1;
-    setCursorInfo({ line, col });
-  }, []);
+  const updateCursorInfo = React.useCallback(
+    (textarea: HTMLTextAreaElement) => {
+      const pos = textarea.selectionStart;
+      const before = textarea.value.slice(0, pos);
+      const parts = before.split("\n");
+      const line = parts.length;
+      const col = (parts[parts.length - 1]?.length ?? 0) + 1;
+      setCursorInfo({ line, col });
+    },
+    [],
+  );
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
@@ -405,22 +434,45 @@ function CodeEditorInner({
 
   const refreshSuggestions = React.useCallback(
     (textarea: HTMLTextAreaElement, text: string) => {
+      if (suppressSuggestionsRef.current) {
+        setSuggestions([]);
+        return;
+      }
+
       const pos = textarea.selectionStart;
       const { word, start: wordStart } = getCurrentWord(text, pos);
 
       if (word.length < 1) {
         setSuggestions([]);
+        setSelectedIndex(0);
         return;
       }
 
       const newSuggestions = getSuggestions(word);
-      setSuggestions(newSuggestions);
-      setSelectedIndex(0);
+      const sameSuggestions =
+        suggestions.length === newSuggestions.length &&
+        suggestions.every(
+          (current, index) =>
+            current.text === newSuggestions[index]?.text &&
+            current.type === newSuggestions[index]?.type,
+        );
+
+      if (!sameSuggestions) {
+        setSuggestions(newSuggestions);
+      }
+
+      setSelectedIndex((prev) => {
+        if (!sameSuggestions) return 0;
+        if (newSuggestions.length === 0) return 0;
+        return Math.min(prev, newSuggestions.length - 1);
+      });
 
       const textBeforeCursor = text.slice(0, wordStart);
       const linesBeforeCursor = textBeforeCursor.split("\n");
       const currentLine = linesBeforeCursor.length - 1;
       const lineText = linesBeforeCursor[linesBeforeCursor.length - 1] ?? "";
+      const caretTop = currentLine * lineHeight - textarea.scrollTop;
+      const belowTop = caretTop + lineHeight;
 
       let charWidth = 8.4;
       if (measureRef.current) {
@@ -428,12 +480,23 @@ function CodeEditorInner({
         charWidth = measureRef.current.offsetWidth / (lineText.length || 1);
       }
 
+      const estimatedPopupHeight = Math.min(
+        192,
+        Math.max(28, newSuggestions.length * 24 + 8),
+      );
+      const placeAbove =
+        belowTop + estimatedPopupHeight > textarea.clientHeight &&
+        caretTop - estimatedPopupHeight >= 0;
+
       setCursorPosition({
         x: Math.max(8, lineText.length * charWidth + 8 - textarea.scrollLeft),
-        y: (currentLine + 1) * lineHeight - textarea.scrollTop,
+        y: placeAbove
+          ? Math.max(8, caretTop - estimatedPopupHeight)
+          : Math.max(8, belowTop),
+        placeAbove,
       });
     },
-    [getSuggestions, lineHeight],
+    [getSuggestions, lineHeight, suggestions],
   );
 
   const getCurrentWord = (
@@ -459,6 +522,7 @@ function CodeEditorInner({
 
     updateFileContent(activeFileId, newContent);
     setSuggestions([]);
+    suppressSuggestionsRef.current = false;
 
     setTimeout(() => {
       const newPos = start + suggestion.text.length;
@@ -468,6 +532,7 @@ function CodeEditorInner({
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    suppressSuggestionsRef.current = false;
     if (activeFileId) {
       updateFileContent(activeFileId, e.target.value);
     }
@@ -509,6 +574,8 @@ function CodeEditorInner({
     if (e.key === "Escape" && suggestions.length > 0) {
       e.preventDefault();
       setSuggestions([]);
+      setSelectedIndex(0);
+      suppressSuggestionsRef.current = true;
       return;
     }
 
@@ -525,6 +592,7 @@ function CodeEditorInner({
     // Ctrl+Space - Explicitly show suggestions
     if ((e.ctrlKey || e.metaKey) && e.key === " ") {
       e.preventDefault();
+      suppressSuggestionsRef.current = false;
       const { word } = getCurrentWord(val, pos);
       const newSuggestions =
         word.length > 0
@@ -754,6 +822,8 @@ function CodeEditorInner({
       }
     } else if (e.key === "Escape") {
       setSuggestions([]);
+      setSelectedIndex(0);
+      suppressSuggestionsRef.current = true;
     }
   };
 
@@ -943,8 +1013,11 @@ function CodeEditorInner({
         <div className="relative flex-1 overflow-hidden">
           <div
             ref={highlightRef}
-            className="pointer-events-none absolute inset-0 overflow-hidden p-2 font-mono whitespace-pre-wrap wrap-break-word"
-            style={{ fontSize: `${editorFontSize}px`, lineHeight: `${lineHeight}px` }}
+            className="pointer-events-none absolute inset-0 overflow-hidden p-2 font-mono wrap-break-word whitespace-pre-wrap"
+            style={{
+              fontSize: `${editorFontSize}px`,
+              lineHeight: `${lineHeight}px`,
+            }}
             aria-hidden="true"
           >
             {lines.map((line, i) => (
@@ -977,6 +1050,8 @@ function CodeEditorInner({
             onChange={handleChange}
             onKeyUp={(e) => {
               updateCursorInfo(e.currentTarget);
+              if (IGNORED_SUGGESTION_REFRESH_KEYS.has(e.key)) return;
+              if (e.ctrlKey || e.metaKey || e.altKey) return;
               refreshSuggestions(e.currentTarget, e.currentTarget.value);
             }}
             onSelect={(e) => {
@@ -1019,6 +1094,9 @@ function CodeEditorInner({
                 borderColor: colorScheme.border,
                 minWidth: "140px",
                 maxWidth: "200px",
+                transformOrigin: cursorPosition.placeAbove
+                  ? "bottom left"
+                  : "top left",
               }}
             >
               {suggestions.map((suggestion, i) => (
@@ -1066,7 +1144,9 @@ function CodeEditorInner({
       >
         <div className="flex items-center gap-2">
           <span>Zoom {editorFontSize}px</span>
-          <span>Ln {cursorInfo.line}, Col {cursorInfo.col}</span>
+          <span>
+            Ln {cursorInfo.line}, Col {cursorInfo.col}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">
@@ -1075,7 +1155,8 @@ function CodeEditorInner({
               className="rounded px-1"
               style={{
                 color: tabSize === 2 ? colorScheme.text : colorScheme.textMuted,
-                backgroundColor: tabSize === 2 ? colorScheme.active : "transparent",
+                backgroundColor:
+                  tabSize === 2 ? colorScheme.active : "transparent",
               }}
             >
               2
@@ -1085,7 +1166,8 @@ function CodeEditorInner({
               className="rounded px-1"
               style={{
                 color: tabSize === 4 ? colorScheme.text : colorScheme.textMuted,
-                backgroundColor: tabSize === 4 ? colorScheme.active : "transparent",
+                backgroundColor:
+                  tabSize === 4 ? colorScheme.active : "transparent",
               }}
             >
               4
@@ -1095,7 +1177,8 @@ function CodeEditorInner({
               className="rounded px-1"
               style={{
                 color: tabSize === 8 ? colorScheme.text : colorScheme.textMuted,
-                backgroundColor: tabSize === 8 ? colorScheme.active : "transparent",
+                backgroundColor:
+                  tabSize === 8 ? colorScheme.active : "transparent",
               }}
             >
               8

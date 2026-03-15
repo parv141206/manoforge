@@ -4,7 +4,7 @@
   <p>A simulator based on Morris Mano's basic architecture of a computer!</p>
 </div>
 
-<img  alt="image" src="./public/docs/demo.png" />
+<img  alt="image" src="./public/docs/demo2.png" />
 
 ## Features
 
