@@ -102,6 +102,10 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geist.variable}`}>
       <head>
+        <meta
+          name="google-site-verification"
+          content="Plv7-l-9fD_Sg9-FqpB2yaOhOaV5njShdmBquxUa4fU"
+        />
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link
           rel="icon"
