@@ -2,6 +2,7 @@
 
 import React from "react";
 import { useThemeStore } from "@/stores/theme-store";
+import { useUiStore } from "@/stores/ui-store";
 
 interface ResizableProps {
   children: React.ReactNode;
@@ -38,6 +39,7 @@ interface HandleProps {
 
 function ResizeHandle({ direction, onMouseDown }: HandleProps) {
   const { colorScheme } = useThemeStore();
+  const { layoutMode } = useUiStore();
   const [isHovered, setIsHovered] = React.useState(false);
   const [isDragging, setIsDragging] = React.useState(false);
 
@@ -56,26 +58,20 @@ function ResizeHandle({ direction, onMouseDown }: HandleProps) {
     <div
       className={`relative shrink-0 ${
         direction === "horizontal"
-          ? "w-1 cursor-col-resize"
-          : "h-1 cursor-row-resize"
+          ? `${layoutMode === "compact" ? "w-px" : "w-px"} cursor-col-resize`
+          : `${layoutMode === "compact" ? "h-px" : "h-px"} cursor-row-resize`
       }`}
-      style={{ backgroundColor: "transparent" }}
+      style={{
+        backgroundColor: isDragging
+          ? colorScheme.accent
+          : isHovered
+            ? `${colorScheme.accent}99`
+            : colorScheme.border,
+      }}
       onMouseDown={handleMouseDown}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-    >
-      <div
-        className={`absolute transition-opacity ${
-          direction === "horizontal"
-            ? "inset-y-0 -right-1 -left-1"
-            : "inset-x-0 -top-1 -bottom-1"
-        }`}
-        style={{
-          backgroundColor: colorScheme.accent,
-          opacity: isHovered || isDragging ? 0.5 : 0,
-        }}
-      />
-    </div>
+    />
   );
 }
 

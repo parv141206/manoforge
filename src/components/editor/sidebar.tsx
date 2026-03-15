@@ -180,7 +180,13 @@ function SidebarInner() {
   return (
     <div
       className={`flex h-full flex-col overflow-hidden ${layoutMode === "compact" ? "rounded-none" : "rounded-lg"}`}
-      style={{ backgroundColor: colorScheme.sidebar }}
+      style={{
+        backgroundColor: colorScheme.sidebar,
+        border:
+          layoutMode === "compact"
+            ? `1px solid ${colorScheme.border}66`
+            : `1px solid ${colorScheme.border}`,
+      }}
     >
       <div
         className="flex items-center justify-between border-b p-3"

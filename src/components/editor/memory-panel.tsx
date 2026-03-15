@@ -363,7 +363,13 @@ function MemoryPanelInner() {
   return (
     <div
       className={`flex h-full flex-col overflow-hidden ${layoutMode === "compact" ? "rounded-none" : "rounded-lg"}`}
-      style={{ backgroundColor: colorScheme.panel }}
+      style={{
+        backgroundColor: colorScheme.panel,
+        border:
+          layoutMode === "compact"
+            ? `1px solid ${colorScheme.border}66`
+            : `1px solid ${colorScheme.border}`,
+      }}
     >
       {/* Search bar */}
       <div

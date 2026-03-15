@@ -6,7 +6,13 @@ import { useThemeStore } from "@/stores/theme-store";
 import { useUiStore } from "@/stores/ui-store";
 import { Parser } from "@/lib/parser";
 import { tokenize } from "@/lib/tokenizer";
-import { VscFile, VscClose } from "react-icons/vsc";
+import {
+  VscFile,
+  VscClose,
+  VscLightbulb,
+  VscError,
+  VscWarning,
+} from "react-icons/vsc";
 import { TbAssembly } from "react-icons/tb";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 
@@ -197,7 +203,13 @@ function CodeEditorInner({
     execution,
   } = useFileStore();
   const { colorScheme } = useThemeStore();
-  const { layoutMode } = useUiStore();
+  const {
+    layoutMode,
+    editorFontSize,
+    setEditorFontSize,
+    tabSize,
+    setTabSize,
+  } = useUiStore();
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const highlightRef = React.useRef<HTMLDivElement>(null);
   const lineNumbersRef = React.useRef<HTMLDivElement>(null);
@@ -211,6 +223,7 @@ function CodeEditorInner({
     column: number;
     message: string;
   } | null>(null);
+  const [cursorInfo, setCursorInfo] = React.useState({ line: 1, col: 1 });
 
   const activeFileId = fileIdOverride ?? storeActiveFileId;
   const activeFile = files?.find((f) => f.id === activeFileId);
@@ -227,6 +240,85 @@ function CodeEditorInner({
     }
     return found;
   }, [lines]);
+
+  const labelDiagnostics = React.useMemo(() => {
+    const declared = new Map<string, number>();
+    const used = new Map<string, number[]>();
+    const memoryRef = new Set(["AND", "ADD", "LDA", "STA", "BUN", "BSA", "ISZ"]);
+
+    for (let lineNo = 0; lineNo < lines.length; lineNo++) {
+      const sourceLine = lines[lineNo] ?? "";
+      const commentIdx = sourceLine.indexOf(";");
+      const code = (commentIdx >= 0
+        ? sourceLine.slice(0, commentIdx)
+        : sourceLine
+      ).trim();
+      if (!code) continue;
+
+      const tokens = code.split(/\s+/).filter(Boolean);
+      if (tokens.length === 0) continue;
+
+      let idx = 0;
+      const first = tokens[0] ?? "";
+      if (first.endsWith(",")) {
+        const label = first.slice(0, -1);
+        if (label) declared.set(label, lineNo + 1);
+        idx = 1;
+      }
+
+      const opcode = (tokens[idx] ?? "").toUpperCase();
+      if (!memoryRef.has(opcode)) continue;
+
+      const operand = tokens[idx + 1] ?? "";
+      if (!operand || operand.toUpperCase() === "I") continue;
+      if (/^-?\d+$/.test(operand)) continue;
+      const cleanOperand = operand.replace(/,$/, "");
+      if (!used.has(cleanOperand)) used.set(cleanOperand, []);
+      used.get(cleanOperand)?.push(lineNo + 1);
+    }
+
+    const unused = [...declared.keys()].filter((name) => !used.has(name));
+    const undeclared = [...used.keys()].filter((name) => !declared.has(name));
+
+    const lineIssues: Record<
+      number,
+      { severity: "warning" | "error"; message: string }
+    > = {};
+
+    for (const label of unused) {
+      const line = declared.get(label);
+      if (!line) continue;
+      lineIssues[line] = {
+        severity: "warning",
+        message: `Unused label: ${label}`,
+      };
+    }
+
+    for (const label of undeclared) {
+      const refs = used.get(label) ?? [];
+      for (const line of refs) {
+        lineIssues[line] = {
+          severity: "error",
+          message: `Undeclared label: ${label}`,
+        };
+      }
+    }
+
+    return { unused, undeclared, lineIssues };
+  }, [lines]);
+
+  const lineHeight = Math.round(editorFontSize * 1.5);
+  const errorCount = (liveError ? 1 : 0) + labelDiagnostics.undeclared.length;
+  const unusedCount = labelDiagnostics.unused.length;
+
+  const updateCursorInfo = React.useCallback((textarea: HTMLTextAreaElement) => {
+    const pos = textarea.selectionStart;
+    const before = textarea.value.slice(0, pos);
+    const parts = before.split("\n");
+    const line = parts.length;
+    const col = (parts[parts.length - 1]?.length ?? 0) + 1;
+    setCursorInfo({ line, col });
+  }, []);
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
@@ -263,35 +355,86 @@ function CodeEditorInner({
     return () => clearTimeout(timer);
   }, [content]);
 
-  const getSuggestions = (word: string): Suggestion[] => {
-    if (!word || word.length < 1) return [];
-    const upper = word.toUpperCase();
-    const results: Suggestion[] = [];
+  React.useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
 
-    for (const instr of INSTRUCTIONS) {
-      if (instr.startsWith(upper)) {
-        results.push({ text: instr, type: "instruction" });
-      }
-    }
-    for (const dir of DIRECTIVES) {
-      if (dir.startsWith(upper)) {
-        results.push({ text: dir, type: "directive" });
-      }
-    }
-    if ("I".startsWith(upper)) {
-      results.push({ text: "I", type: "keyword" });
-    }
-    for (const label of labels) {
-      if (
-        label.toUpperCase().startsWith(upper) &&
-        !results.some((r) => r.text === label.toUpperCase())
-      ) {
-        results.push({ text: label, type: "label" });
-      }
-    }
+    const onWheel = (event: WheelEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      const next = editorFontSize + (event.deltaY < 0 ? 1 : -1);
+      setEditorFontSize(next);
+    };
 
-    return results.slice(0, 8);
-  };
+    textarea.addEventListener("wheel", onWheel, { passive: false });
+    return () => textarea.removeEventListener("wheel", onWheel);
+  }, [editorFontSize, setEditorFontSize]);
+
+  const getSuggestions = React.useCallback(
+    (word: string): Suggestion[] => {
+      if (!word || word.length < 1) return [];
+      const upper = word.toUpperCase();
+      const results: Suggestion[] = [];
+
+      for (const instr of INSTRUCTIONS) {
+        if (instr.startsWith(upper)) {
+          results.push({ text: instr, type: "instruction" });
+        }
+      }
+      for (const dir of DIRECTIVES) {
+        if (dir.startsWith(upper)) {
+          results.push({ text: dir, type: "directive" });
+        }
+      }
+      if ("I".startsWith(upper)) {
+        results.push({ text: "I", type: "keyword" });
+      }
+      for (const label of labels) {
+        if (
+          label.toUpperCase().startsWith(upper) &&
+          !results.some((r) => r.text === label.toUpperCase())
+        ) {
+          results.push({ text: label, type: "label" });
+        }
+      }
+
+      return results.slice(0, 8);
+    },
+    [labels],
+  );
+
+  const refreshSuggestions = React.useCallback(
+    (textarea: HTMLTextAreaElement, text: string) => {
+      const pos = textarea.selectionStart;
+      const { word, start: wordStart } = getCurrentWord(text, pos);
+
+      if (word.length < 1) {
+        setSuggestions([]);
+        return;
+      }
+
+      const newSuggestions = getSuggestions(word);
+      setSuggestions(newSuggestions);
+      setSelectedIndex(0);
+
+      const textBeforeCursor = text.slice(0, wordStart);
+      const linesBeforeCursor = textBeforeCursor.split("\n");
+      const currentLine = linesBeforeCursor.length - 1;
+      const lineText = linesBeforeCursor[linesBeforeCursor.length - 1] ?? "";
+
+      let charWidth = 8.4;
+      if (measureRef.current) {
+        measureRef.current.textContent = lineText || "M";
+        charWidth = measureRef.current.offsetWidth / (lineText.length || 1);
+      }
+
+      setCursorPosition({
+        x: Math.max(8, lineText.length * charWidth + 8 - textarea.scrollLeft),
+        y: (currentLine + 1) * lineHeight - textarea.scrollTop,
+      });
+    },
+    [getSuggestions, lineHeight],
+  );
 
   const getCurrentWord = (
     text: string,
@@ -329,38 +472,8 @@ function CodeEditorInner({
       updateFileContent(activeFileId, e.target.value);
     }
 
-    // suggestions
-    const textarea = e.target;
-    const pos = textarea.selectionStart;
-    const { word, start: wordStart } = getCurrentWord(e.target.value, pos);
-
-    if (word.length >= 1) {
-      const newSuggestions = getSuggestions(word);
-      setSuggestions(newSuggestions);
-      setSelectedIndex(0);
-
-      const textBeforeCursor = e.target.value.slice(0, wordStart);
-      const linesBeforeCursor = textBeforeCursor.split("\n");
-      const currentLine = linesBeforeCursor.length - 1;
-      const lineText = linesBeforeCursor[linesBeforeCursor.length - 1] ?? "";
-
-      let charWidth = 8.4; // fallback
-      if (measureRef.current) {
-        measureRef.current.textContent = lineText || "M";
-        charWidth = measureRef.current.offsetWidth / (lineText.length || 1);
-      }
-
-      const scrollTop = textarea.scrollTop;
-      const scrollLeft = textarea.scrollLeft;
-      const lineHeight = 24;
-
-      setCursorPosition({
-        x: Math.max(8, lineText.length * charWidth + 8 - scrollLeft),
-        y: (currentLine + 1) * lineHeight - scrollTop,
-      });
-    } else {
-      setSuggestions([]);
-    }
+    updateCursorInfo(e.target);
+    refreshSuggestions(e.target, e.target.value);
   };
 
   const handleScroll = () => {
@@ -392,6 +505,12 @@ function CodeEditorInner({
     const pos = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const val = textarea.value;
+
+    if (e.key === "Escape" && suggestions.length > 0) {
+      e.preventDefault();
+      setSuggestions([]);
+      return;
+    }
 
     // Ctrl+Shift+F - Format code
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "F") {
@@ -579,11 +698,14 @@ function CodeEditorInner({
       e.preventDefault();
       const before = val.slice(0, pos);
       const after = val.slice(textarea.selectionEnd);
-      const newContent = before + "    " + after;
+      const tabText = " ".repeat(tabSize);
+      const newContent = before + tabText + after;
       if (activeFileId) {
         updateFileContent(activeFileId, newContent);
         setTimeout(() => {
-          textarea.setSelectionRange(pos + 4, pos + 4);
+          const newPos = pos + tabText.length;
+          textarea.setSelectionRange(newPos, newPos);
+          updateCursorInfo(textarea);
         }, 0);
       }
       return;
@@ -614,12 +736,18 @@ function CodeEditorInner({
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setSelectedIndex((prev) => (prev + 1) % suggestions.length);
-    } else if (e.key === "ArrowUp") {
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
       e.preventDefault();
       setSelectedIndex(
         (prev) => (prev - 1 + suggestions.length) % suggestions.length,
       );
-    } else if (e.key === "Tab" || e.key === "Enter") {
+      return;
+    }
+
+    if (e.key === "Tab" || e.key === "Enter") {
       if (suggestions[selectedIndex]) {
         e.preventDefault();
         applySuggestion(suggestions[selectedIndex]);
@@ -662,7 +790,13 @@ function CodeEditorInner({
   return (
     <div
       className={`flex h-full flex-col overflow-hidden ${layoutMode === "compact" ? "rounded-none" : "rounded-lg"}`}
-      style={{ backgroundColor: colorScheme.panel }}
+      style={{
+        backgroundColor: colorScheme.panel,
+        border:
+          layoutMode === "compact"
+            ? `1px solid ${colorScheme.border}66`
+            : `1px solid ${colorScheme.border}`,
+      }}
     >
       <div
         className="flex items-center gap-1 overflow-x-auto border-b px-2 py-1"
@@ -769,31 +903,48 @@ function CodeEditorInner({
           className="flex flex-col overflow-hidden py-2 text-right font-mono text-xs select-none"
           style={{ minWidth: "3rem", backgroundColor: colorScheme.sidebar }}
         >
-          {lines.map((_, i) => (
-            <div
-              key={i}
-              className="px-2 leading-6"
-              style={{
-                backgroundColor: isCurrentLine(i)
-                  ? `${colorScheme.accent}40`
-                  : "transparent",
-                color:
-                  liveError?.line === i + 1
-                    ? "#ef4444"
-                    : isCurrentLine(i)
-                      ? colorScheme.accent
-                      : colorScheme.textMuted,
-              }}
-            >
-              {i + 1}
-            </div>
-          ))}
+          {lines.map((_, i) => {
+            const issue = labelDiagnostics.lineIssues[i + 1];
+            return (
+              <div
+                key={i}
+                className="flex items-center justify-between gap-1 px-2"
+                style={{
+                  lineHeight: `${lineHeight}px`,
+                  backgroundColor: isCurrentLine(i)
+                    ? `${colorScheme.accent}40`
+                    : "transparent",
+                  color:
+                    liveError?.line === i + 1
+                      ? "#ef4444"
+                      : isCurrentLine(i)
+                        ? colorScheme.accent
+                        : colorScheme.textMuted,
+                }}
+              >
+                <span>{i + 1}</span>
+                {issue && (
+                  <VscLightbulb
+                    size={11}
+                    title={issue.message}
+                    style={{
+                      color:
+                        issue.severity === "error"
+                          ? "#ef4444"
+                          : colorScheme.textMuted,
+                    }}
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <div className="relative flex-1 overflow-hidden">
           <div
             ref={highlightRef}
-            className="pointer-events-none absolute inset-0 overflow-hidden p-2 font-mono text-sm leading-6 whitespace-pre"
+            className="pointer-events-none absolute inset-0 overflow-hidden p-2 font-mono whitespace-pre-wrap wrap-break-word"
+            style={{ fontSize: `${editorFontSize}px`, lineHeight: `${lineHeight}px` }}
             aria-hidden="true"
           >
             {lines.map((line, i) => (
@@ -824,18 +975,37 @@ function CodeEditorInner({
             ref={textareaRef}
             value={content}
             onChange={handleChange}
+            onKeyUp={(e) => {
+              updateCursorInfo(e.currentTarget);
+              refreshSuggestions(e.currentTarget, e.currentTarget.value);
+            }}
+            onSelect={(e) => {
+              updateCursorInfo(e.currentTarget);
+              refreshSuggestions(e.currentTarget, e.currentTarget.value);
+            }}
+            onClick={(e) => {
+              updateCursorInfo(e.currentTarget);
+              refreshSuggestions(e.currentTarget, e.currentTarget.value);
+            }}
             onScroll={handleScroll}
             onKeyDown={handleKeyDown}
             onBlur={() => setTimeout(() => setSuggestions([]), 150)}
             spellCheck={false}
-            className="absolute inset-0 resize-none bg-transparent p-2 font-mono text-sm leading-6 text-transparent caret-current outline-none"
-            style={{ caretColor: colorScheme.text }}
+            className="absolute inset-0 resize-none bg-transparent p-2 font-mono text-transparent caret-current outline-none"
+            style={{
+              caretColor: colorScheme.text,
+              fontSize: `${editorFontSize}px`,
+              lineHeight: `${lineHeight}px`,
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
+            }}
             placeholder="Start typing your Mano assembly code..."
           />
 
           <span
             ref={measureRef}
-            className="pointer-events-none invisible absolute font-mono text-sm whitespace-pre"
+            className="pointer-events-none invisible absolute font-mono whitespace-pre"
+            style={{ fontSize: `${editorFontSize}px` }}
             aria-hidden="true"
           />
 
@@ -883,6 +1053,63 @@ function CodeEditorInner({
               ))}
             </div>
           )}
+        </div>
+      </div>
+
+      <div
+        className="flex items-center justify-between border-t px-2 py-1 text-[11px]"
+        style={{
+          borderColor: colorScheme.border,
+          color: colorScheme.textMuted,
+          backgroundColor: colorScheme.sidebar,
+        }}
+      >
+        <div className="flex items-center gap-2">
+          <span>Zoom {editorFontSize}px</span>
+          <span>Ln {cursorInfo.line}, Col {cursorInfo.col}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setTabSize(2)}
+              className="rounded px-1"
+              style={{
+                color: tabSize === 2 ? colorScheme.text : colorScheme.textMuted,
+                backgroundColor: tabSize === 2 ? colorScheme.active : "transparent",
+              }}
+            >
+              2
+            </button>
+            <button
+              onClick={() => setTabSize(4)}
+              className="rounded px-1"
+              style={{
+                color: tabSize === 4 ? colorScheme.text : colorScheme.textMuted,
+                backgroundColor: tabSize === 4 ? colorScheme.active : "transparent",
+              }}
+            >
+              4
+            </button>
+            <button
+              onClick={() => setTabSize(8)}
+              className="rounded px-1"
+              style={{
+                color: tabSize === 8 ? colorScheme.text : colorScheme.textMuted,
+                backgroundColor: tabSize === 8 ? colorScheme.active : "transparent",
+              }}
+            >
+              8
+            </button>
+            <span>Spaces</span>
+          </div>
+          <span className="flex items-center gap-1" title="Errors">
+            <VscError size={12} style={{ color: "#ef4444" }} />
+            <span>{errorCount}</span>
+          </span>
+          <span className="flex items-center gap-1" title="Unused labels">
+            <VscWarning size={12} style={{ color: colorScheme.textMuted }} />
+            <span>{unusedCount}</span>
+          </span>
         </div>
       </div>
     </div>

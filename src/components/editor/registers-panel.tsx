@@ -70,7 +70,13 @@ function RegistersPanelInner() {
   return (
     <div
       className={`flex h-full flex-col overflow-hidden ${layoutMode === "compact" ? "rounded-none" : "rounded-lg"}`}
-      style={{ backgroundColor: colorScheme.panel }}
+      style={{
+        backgroundColor: colorScheme.panel,
+        border:
+          layoutMode === "compact"
+            ? `1px solid ${colorScheme.border}66`
+            : `1px solid ${colorScheme.border}`,
+      }}
     >
       <div
         className="flex items-center justify-between gap-2 border-b px-2 py-1.5"

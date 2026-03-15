@@ -430,7 +430,10 @@ export function Header() {
       className={`flex h-full items-center justify-between px-2 sm:px-4 ${layoutMode === "compact" ? "rounded-none" : "rounded-lg"}`}
       style={{
         backgroundColor: colorScheme.sidebar,
-        border: `1px solid ${colorScheme.border}`,
+        border:
+          layoutMode === "compact"
+            ? `1px solid ${colorScheme.border}66`
+            : `1px solid ${colorScheme.border}`,
       }}
     >
       <div className="hidden items-center gap-4 sm:flex">

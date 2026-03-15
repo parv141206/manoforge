@@ -248,7 +248,7 @@ export function Editor() {
 
                       <div
                         onMouseDown={() => setIsDraggingSplit(true)}
-                        className={`z-20 shrink-0 transition-colors ${splitDirection === "vertical" ? "h-full w-1 cursor-col-resize" : "h-1 w-full cursor-row-resize"}`}
+                        className={`z-20 shrink-0 transition-colors ${splitDirection === "vertical" ? "h-full w-px cursor-col-resize" : "h-px w-full cursor-row-resize"}`}
                         style={{
                           backgroundColor: isDraggingSplit
                             ? colorScheme.accent
@@ -487,6 +487,29 @@ export function Editor() {
           </>
         )}
       </AnimatePresence>
+
+      <div
+        className="flex h-6 items-center justify-between border-t px-2 text-[11px]"
+        style={{
+          borderColor: colorScheme.border,
+          backgroundColor: colorScheme.sidebar,
+          color: colorScheme.textMuted,
+        }}
+      >
+        <a
+          href="https://github.com/parv141206"
+          target="_blank"
+          rel="noreferrer"
+          className="truncate"
+          style={{ color: colorScheme.textMuted }}
+        >
+          Made with love by parv141206
+        </a>
+        <span className="hidden truncate md:block">
+          Ctrl+Shift+F format • Ctrl+/ comment • Ctrl+D duplicate • Alt+↑/↓
+          move line • Ctrl+Space suggest • Ctrl/Cmd+Wheel editor zoom
+        </span>
+      </div>
     </div>
   );
 }
