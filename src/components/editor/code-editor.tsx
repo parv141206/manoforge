@@ -227,6 +227,7 @@ function CodeEditorInner({
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const highlightRef = React.useRef<HTMLDivElement>(null);
   const lineNumbersRef = React.useRef<HTMLDivElement>(null);
+  const editorViewportRef = React.useRef<HTMLDivElement>(null);
   const measureRef = React.useRef<HTMLSpanElement>(null);
   const suppressSuggestionsRef = React.useRef(false);
 
@@ -467,32 +468,80 @@ function CodeEditorInner({
         return Math.min(prev, newSuggestions.length - 1);
       });
 
-      const textBeforeCursor = text.slice(0, wordStart);
-      const linesBeforeCursor = textBeforeCursor.split("\n");
-      const currentLine = linesBeforeCursor.length - 1;
-      const lineText = linesBeforeCursor[linesBeforeCursor.length - 1] ?? "";
-      const caretTop = currentLine * lineHeight - textarea.scrollTop;
-      const belowTop = caretTop + lineHeight;
+      const computeCaretCoordinates = () => {
+        const mirror = document.createElement("div");
+        const mirrorText = document.createTextNode(text.slice(0, wordStart));
+        const marker = document.createElement("span");
+        marker.textContent = "\u200b";
 
-      let charWidth = 8.4;
-      if (measureRef.current) {
-        measureRef.current.textContent = lineText || "M";
-        charWidth = measureRef.current.offsetWidth / (lineText.length || 1);
-      }
+        const computed = window.getComputedStyle(textarea);
+        mirror.style.position = "absolute";
+        mirror.style.visibility = "hidden";
+        mirror.style.pointerEvents = "none";
+        mirror.style.top = "0";
+        mirror.style.left = "0";
+        mirror.style.zIndex = "-1";
+        mirror.style.whiteSpace = computed.whiteSpace;
+        mirror.style.overflowWrap =
+          computed.overflowWrap || computed.wordWrap || "break-word";
+        mirror.style.wordBreak = computed.wordBreak;
+        mirror.style.tabSize = computed.tabSize;
+        mirror.style.font = computed.font;
+        mirror.style.fontSize = computed.fontSize;
+        mirror.style.fontFamily = computed.fontFamily;
+        mirror.style.fontWeight = computed.fontWeight;
+        mirror.style.lineHeight = computed.lineHeight;
+        mirror.style.letterSpacing = computed.letterSpacing;
+        mirror.style.textTransform = computed.textTransform;
+        mirror.style.textIndent = computed.textIndent;
+        mirror.style.padding = computed.padding;
+        mirror.style.border = computed.border;
+        mirror.style.boxSizing = computed.boxSizing;
+        mirror.style.width = `${textarea.clientWidth}px`;
+
+        mirror.appendChild(mirrorText);
+        mirror.appendChild(marker);
+        document.body.appendChild(mirror);
+
+        const x = marker.offsetLeft - textarea.scrollLeft;
+        const y = marker.offsetTop - textarea.scrollTop;
+        document.body.removeChild(mirror);
+
+        return { x, y };
+      };
+
+      const { x: caretLeft, y: caretTop } = computeCaretCoordinates();
+      const belowTop = caretTop + lineHeight;
 
       const estimatedPopupHeight = Math.min(
         192,
         Math.max(28, newSuggestions.length * 24 + 8),
       );
-      const placeAbove =
-        belowTop + estimatedPopupHeight > textarea.clientHeight &&
-        caretTop - estimatedPopupHeight >= 0;
+      const estimatedPopupWidth = 220;
+
+      const viewportWidth =
+        editorViewportRef.current?.clientWidth ?? textarea.clientWidth;
+      const viewportHeight =
+        editorViewportRef.current?.clientHeight ?? textarea.clientHeight;
+
+      const canPlaceAbove = caretTop - estimatedPopupHeight >= 8;
+      const notEnoughBelow =
+        belowTop + estimatedPopupHeight > viewportHeight - 8;
+      const placeAbove = notEnoughBelow && canPlaceAbove;
+
+      const unclampedX = Math.max(8, caretLeft + 2);
+      const maxX = Math.max(8, viewportWidth - estimatedPopupWidth - 8);
+      const clampedX = Math.min(unclampedX, maxX);
+
+      const rawY = placeAbove
+        ? Math.max(8, caretTop - estimatedPopupHeight)
+        : Math.max(8, belowTop);
+      const maxY = Math.max(8, viewportHeight - estimatedPopupHeight - 8);
+      const clampedY = Math.min(rawY, maxY);
 
       setCursorPosition({
-        x: Math.max(8, lineText.length * charWidth + 8 - textarea.scrollLeft),
-        y: placeAbove
-          ? Math.max(8, caretTop - estimatedPopupHeight)
-          : Math.max(8, belowTop),
+        x: clampedX,
+        y: clampedY,
         placeAbove,
       });
     },
@@ -550,8 +599,16 @@ function CodeEditorInner({
         highlightRef.current.scrollTop = textareaRef.current.scrollTop;
         highlightRef.current.scrollLeft = textareaRef.current.scrollLeft;
       }
+      if (suggestions.length > 0) {
+        refreshSuggestions(textareaRef.current, textareaRef.current.value);
+      }
     }
   };
+
+  React.useEffect(() => {
+    if (!textareaRef.current || suggestions.length === 0) return;
+    refreshSuggestions(textareaRef.current, textareaRef.current.value);
+  }, [editorFontSize, lineHeight, suggestions.length, refreshSuggestions]);
 
   const isCurrentLine = (lineIndex: number) => {
     // execution.currentLine stores the memory address (PC)
@@ -869,7 +926,7 @@ function CodeEditorInner({
       }}
     >
       <div
-        className="flex items-center gap-1 overflow-x-auto border-b px-2 py-1"
+        className="flex items-center overflow-x-auto border-b"
         style={{ borderColor: colorScheme.border }}
         onDragOver={(e) => {
           const hasFile =
@@ -1010,7 +1067,10 @@ function CodeEditorInner({
           })}
         </div>
 
-        <div className="relative flex-1 overflow-hidden">
+        <div
+          ref={editorViewportRef}
+          className="relative flex-1 overflow-hidden"
+        >
           <div
             ref={highlightRef}
             className="pointer-events-none absolute inset-0 overflow-hidden p-2 font-mono wrap-break-word whitespace-pre-wrap"
@@ -1088,7 +1148,7 @@ function CodeEditorInner({
             <div
               className="absolute z-50 max-h-48 overflow-auto rounded border shadow-lg"
               style={{
-                left: Math.min(cursorPosition.x, 200),
+                left: cursorPosition.x,
                 top: cursorPosition.y,
                 backgroundColor: colorScheme.sidebar,
                 borderColor: colorScheme.border,

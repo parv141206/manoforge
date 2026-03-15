@@ -373,7 +373,7 @@ function MemoryPanelInner() {
     >
       {/* Search bar */}
       <div
-        className="flex items-center gap-2 border-b px-2 py-1.5"
+        className="flex items-center border-b"
         style={{ borderColor: colorScheme.border }}
       >
         <div

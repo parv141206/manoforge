@@ -56,7 +56,7 @@ function ResizeHandle({ direction, onMouseDown }: HandleProps) {
 
   return (
     <div
-      className={`relative shrink-0 ${
+      className={`relative shrink-0 opacity-0 hover:opacity-100 ${
         direction === "horizontal"
           ? `${layoutMode === "compact" ? "w-px" : "w-px"} cursor-col-resize`
           : `${layoutMode === "compact" ? "h-px" : "h-px"} cursor-row-resize`

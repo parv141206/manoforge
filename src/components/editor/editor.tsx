@@ -491,8 +491,12 @@ export function Editor() {
       <div
         className="flex h-6 items-center justify-between border-t px-2 text-[11px]"
         style={{
-          borderColor: colorScheme.border,
-          backgroundColor: colorScheme.sidebar,
+          borderColor:
+            layoutMode === "compact" ? colorScheme.border : "transparent",
+          backgroundColor:
+            layoutMode === "floating"
+              ? colorScheme.background
+              : colorScheme.sidebar,
           color: colorScheme.textMuted,
         }}
       >

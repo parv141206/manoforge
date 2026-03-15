@@ -79,7 +79,7 @@ function RegistersPanelInner() {
       }}
     >
       <div
-        className="flex items-center justify-between gap-2 border-b px-2 py-1.5"
+        className="flex items-center justify-between gap-2 border-b px-2 py-[4px]"
         style={{ borderColor: colorScheme.border }}
       >
         <div className="flex">
@@ -116,7 +116,13 @@ function RegistersPanelInner() {
         </div>
 
         {activeTab === "registers" && (
-          <div className="flex">
+          <div
+            className="flex"
+            style={{
+              backgroundColor: colorScheme.sidebar,
+              border: `1px solid ${colorScheme.border}`,
+            }}
+          >
             {(["HEX", "DEC", "BIN"] as DisplayMode[]).map((mode, i) => (
               <button
                 key={mode}
@@ -140,7 +146,7 @@ function RegistersPanelInner() {
 
       <div className="flex-1 overflow-y-auto p-1.5">
         {activeTab === "registers" ? (
-          <div className="flex h-full flex-col space-y-2">
+          <div className="flex h-full flex-col space-y-1">
             <div className="grid grid-cols-2 gap-1">
               {mainRegisters.map(({ name, key, bits }) => (
                 <div
@@ -187,7 +193,7 @@ function RegistersPanelInner() {
               ))}
             </div>
 
-            <div className="grid grid-cols-4 gap-1">
+            <div className="grid grid-cols-1 gap-1">
               {flags.map(({ name, key }) => (
                 <div
                   key={name}
