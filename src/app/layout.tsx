@@ -5,11 +5,10 @@ import { Geist } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
-const siteUrl = "https://mano-forge.vercel.app";
+const siteUrl = "https://manoforge.vercel.app/";
 const siteName = "Mano Forge";
 const siteDescription =
   "A Mano computer simulator based on Morris Mano's basic computer architecture. Write, assemble, and execute machine code with a visual debugger, memory viewer, and register display.";
-
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {

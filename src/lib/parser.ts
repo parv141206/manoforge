@@ -326,10 +326,24 @@ export class Parser {
 
   private parseData(): { datatype: string; value: any } {
     const datatype = this.consume("DATATYPE", "Expected data type").value;
-    const value = this.consume(
-      "NUMBER",
-      "Expected number after data type",
-    ).value;
+    const token = this.peek();
+    let value: string;
+    if (this.check(token, "NUMBER")) {
+      value = this.consume("NUMBER", "Expected number after data type").value;
+    } else if (this.check(token, "IDENTIFIER")) {
+      value = this.consume("IDENTIFIER", "Expected value after data type").value;
+      if (datatype === "HEX") {
+        if (!/^[0-9A-Fa-f]+$/.test(value)) {
+          this.error("Invalid hexadecimal value");
+        }
+      } else {
+        if (!/^-?\d+$/.test(value)) {
+          this.error("Invalid decimal value");
+        }
+      }
+    } else {
+      this.error("Expected number or value after data type");
+    }
 
     return { datatype, value };
   }

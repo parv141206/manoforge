@@ -21,6 +21,8 @@ function MemoryPanelInner() {
   const listScrollRef = useRef<HTMLDivElement>(null);
   const gridScrollPosRef = useRef({ top: 0, left: 0 });
   const listScrollPosRef = useRef({ top: 0, left: 0 });
+  const gridScrollCaptureRafRef = useRef<number | null>(null);
+  const listScrollCaptureRafRef = useRef<number | null>(null);
 
   const addressInfo = execution.addressInfo;
 
@@ -76,6 +78,17 @@ function MemoryPanelInner() {
     }
   });
 
+  useEffect(() => {
+    return () => {
+      if (gridScrollCaptureRafRef.current !== null) {
+        cancelAnimationFrame(gridScrollCaptureRafRef.current);
+      }
+      if (listScrollCaptureRafRef.current !== null) {
+        cancelAnimationFrame(listScrollCaptureRafRef.current);
+      }
+    };
+  }, []);
+
   const GridView = () => (
     <div className="flex h-full flex-col">
       <div
@@ -121,8 +134,15 @@ function MemoryPanelInner() {
         ref={gridScrollRef}
         className="flex-1 overflow-auto"
         onScroll={(e) => {
-          gridScrollPosRef.current.top = e.currentTarget.scrollTop;
-          gridScrollPosRef.current.left = e.currentTarget.scrollLeft;
+          const el = e.currentTarget;
+          if (gridScrollCaptureRafRef.current !== null) {
+            cancelAnimationFrame(gridScrollCaptureRafRef.current);
+          }
+          gridScrollCaptureRafRef.current = requestAnimationFrame(() => {
+            gridScrollCaptureRafRef.current = null;
+            gridScrollPosRef.current.top = el.scrollTop;
+            gridScrollPosRef.current.left = el.scrollLeft;
+          });
         }}
       >
         <table className="w-full border-collapse font-mono text-[10px]">
@@ -233,8 +253,15 @@ function MemoryPanelInner() {
         ref={listScrollRef}
         className="flex-1 overflow-auto"
         onScroll={(e) => {
-          listScrollPosRef.current.top = e.currentTarget.scrollTop;
-          listScrollPosRef.current.left = e.currentTarget.scrollLeft;
+          const el = e.currentTarget;
+          if (listScrollCaptureRafRef.current !== null) {
+            cancelAnimationFrame(listScrollCaptureRafRef.current);
+          }
+          listScrollCaptureRafRef.current = requestAnimationFrame(() => {
+            listScrollCaptureRafRef.current = null;
+            listScrollPosRef.current.top = el.scrollTop;
+            listScrollPosRef.current.left = el.scrollLeft;
+          });
         }}
       >
         <div className="font-mono text-[11px]">

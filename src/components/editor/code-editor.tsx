@@ -65,6 +65,9 @@ const IGNORED_SUGGESTION_REFRESH_KEYS = new Set([
   "Escape",
 ]);
 
+const SUGGESTION_DEBOUNCE_MS = 280;
+const SUGGESTION_MIN_WORD_LEN = 2;
+
 function highlightLine(
   line: string,
   syntax: {
@@ -230,6 +233,11 @@ function CodeEditorInner({
   const editorViewportRef = React.useRef<HTMLDivElement>(null);
   const measureRef = React.useRef<HTMLSpanElement>(null);
   const suppressSuggestionsRef = React.useRef(false);
+  const suggestionDebounceRef = React.useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  const [viewportContentWidth, setViewportContentWidth] = React.useState(0);
+  const [monoCharWidth, setMonoCharWidth] = React.useState(0);
 
   const [suggestions, setSuggestions] = React.useState<Suggestion[]>([]);
   const [selectedIndex, setSelectedIndex] = React.useState(0);
@@ -338,6 +346,48 @@ function CodeEditorInner({
   const errorCount = (liveError ? 1 : 0) + labelDiagnostics.undeclared.length;
   const unusedCount = labelDiagnostics.unused.length;
 
+  const lineBlockHeights = React.useMemo(() => {
+    const w = Math.max(0, viewportContentWidth - 16);
+    const cw = monoCharWidth > 0 ? monoCharWidth : editorFontSize * 0.6;
+    if (w <= 0) {
+      return lines.map(() => lineHeight);
+    }
+    const charsPerLine = Math.max(1, Math.floor(w / cw));
+    return lines.map((line) => {
+      const len = line.length;
+      const wraps = len === 0 ? 1 : Math.ceil(len / charsPerLine);
+      return Math.max(1, wraps) * lineHeight;
+    });
+  }, [lines, viewportContentWidth, monoCharWidth, lineHeight, editorFontSize]);
+
+  React.useLayoutEffect(() => {
+    const el = editorViewportRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const cr = entries[0]?.contentRect;
+      if (cr) setViewportContentWidth(cr.width);
+    });
+    ro.observe(el);
+    setViewportContentWidth(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+
+  React.useLayoutEffect(() => {
+    const m = measureRef.current;
+    if (!m) return;
+    m.textContent = "0";
+    const w = m.offsetWidth;
+    setMonoCharWidth(w > 0 ? w : editorFontSize * 0.6);
+  }, [editorFontSize]);
+
+  React.useEffect(() => {
+    return () => {
+      if (suggestionDebounceRef.current) {
+        clearTimeout(suggestionDebounceRef.current);
+      }
+    };
+  }, []);
+
   const updateCursorInfo = React.useCallback(
     (textarea: HTMLTextAreaElement) => {
       const pos = textarea.selectionStart;
@@ -433,26 +483,68 @@ function CodeEditorInner({
     [labels],
   );
 
-  const refreshSuggestions = React.useCallback(
-    (textarea: HTMLTextAreaElement, text: string) => {
+  const suggestionsRef = React.useRef<Suggestion[]>([]);
+  React.useEffect(() => {
+    suggestionsRef.current = suggestions;
+  }, [suggestions]);
+
+  const getCurrentWord = (
+    text: string,
+    pos: number,
+  ): { word: string; start: number } => {
+    let start = pos;
+    while (start > 0 && /\w/.test(text[start - 1] ?? "")) {
+      start--;
+    }
+    return { word: text.slice(start, pos), start };
+  };
+
+  const refreshSuggestionsImmediate = React.useCallback(
+    (
+      textarea: HTMLTextAreaElement,
+      text: string,
+      opts?: { explicit?: boolean },
+    ) => {
       if (suppressSuggestionsRef.current) {
         setSuggestions([]);
         return;
       }
 
+      const explicit = opts?.explicit ?? false;
       const pos = textarea.selectionStart;
       const { word, start: wordStart } = getCurrentWord(text, pos);
 
+      let newSuggestions: Suggestion[];
+
       if (word.length < 1) {
+        if (!explicit) {
+          setSuggestions([]);
+          setSelectedIndex(0);
+          return;
+        }
+        newSuggestions = [...INSTRUCTIONS, ...DIRECTIVES].slice(0, 8).map(
+          (t) => ({
+            text: t,
+            type: INSTRUCTIONS.includes(t)
+              ? ("instruction" as const)
+              : ("directive" as const),
+          }),
+        );
+      } else if (
+        !explicit &&
+        suggestionsRef.current.length === 0 &&
+        word.length < SUGGESTION_MIN_WORD_LEN
+      ) {
         setSuggestions([]);
         setSelectedIndex(0);
         return;
+      } else {
+        newSuggestions = getSuggestions(word);
       }
-
-      const newSuggestions = getSuggestions(word);
+      const prevS = suggestionsRef.current;
       const sameSuggestions =
-        suggestions.length === newSuggestions.length &&
-        suggestions.every(
+        prevS.length === newSuggestions.length &&
+        prevS.every(
           (current, index) =>
             current.text === newSuggestions[index]?.text &&
             current.type === newSuggestions[index]?.type,
@@ -545,19 +637,21 @@ function CodeEditorInner({
         placeAbove,
       });
     },
-    [getSuggestions, lineHeight, suggestions],
+    [getSuggestions, lineHeight],
   );
 
-  const getCurrentWord = (
-    text: string,
-    pos: number,
-  ): { word: string; start: number } => {
-    let start = pos;
-    while (start > 0 && /\w/.test(text[start - 1] ?? "")) {
-      start--;
-    }
-    return { word: text.slice(start, pos), start };
-  };
+  const scheduleSuggestionRefresh = React.useCallback(
+    (textarea: HTMLTextAreaElement, text: string) => {
+      if (suggestionDebounceRef.current) {
+        clearTimeout(suggestionDebounceRef.current);
+      }
+      suggestionDebounceRef.current = setTimeout(() => {
+        suggestionDebounceRef.current = null;
+        refreshSuggestionsImmediate(textarea, text);
+      }, SUGGESTION_DEBOUNCE_MS);
+    },
+    [refreshSuggestionsImmediate],
+  );
 
   const applySuggestion = (suggestion: Suggestion) => {
     if (!textareaRef.current || !activeFileId) return;
@@ -572,6 +666,10 @@ function CodeEditorInner({
     updateFileContent(activeFileId, newContent);
     setSuggestions([]);
     suppressSuggestionsRef.current = false;
+    if (suggestionDebounceRef.current) {
+      clearTimeout(suggestionDebounceRef.current);
+      suggestionDebounceRef.current = null;
+    }
 
     setTimeout(() => {
       const newPos = start + suggestion.text.length;
@@ -587,7 +685,7 @@ function CodeEditorInner({
     }
 
     updateCursorInfo(e.target);
-    refreshSuggestions(e.target, e.target.value);
+    scheduleSuggestionRefresh(e.target, e.target.value);
   };
 
   const handleScroll = () => {
@@ -600,15 +698,21 @@ function CodeEditorInner({
         highlightRef.current.scrollLeft = textareaRef.current.scrollLeft;
       }
       if (suggestions.length > 0) {
-        refreshSuggestions(textareaRef.current, textareaRef.current.value);
+        refreshSuggestionsImmediate(
+          textareaRef.current,
+          textareaRef.current.value,
+        );
       }
     }
   };
 
   React.useEffect(() => {
     if (!textareaRef.current || suggestions.length === 0) return;
-    refreshSuggestions(textareaRef.current, textareaRef.current.value);
-  }, [editorFontSize, lineHeight, suggestions.length, refreshSuggestions]);
+    refreshSuggestionsImmediate(
+      textareaRef.current,
+      textareaRef.current.value,
+    );
+  }, [editorFontSize, lineHeight, suggestions.length, refreshSuggestionsImmediate]);
 
   const isCurrentLine = (lineIndex: number) => {
     // execution.currentLine stores the memory address (PC)
@@ -633,6 +737,10 @@ function CodeEditorInner({
       setSuggestions([]);
       setSelectedIndex(0);
       suppressSuggestionsRef.current = true;
+      if (suggestionDebounceRef.current) {
+        clearTimeout(suggestionDebounceRef.current);
+        suggestionDebounceRef.current = null;
+      }
       return;
     }
 
@@ -650,18 +758,11 @@ function CodeEditorInner({
     if ((e.ctrlKey || e.metaKey) && e.key === " ") {
       e.preventDefault();
       suppressSuggestionsRef.current = false;
-      const { word } = getCurrentWord(val, pos);
-      const newSuggestions =
-        word.length > 0
-          ? getSuggestions(word)
-          : [...INSTRUCTIONS, ...DIRECTIVES].slice(0, 8).map((text) => ({
-              text,
-              type: INSTRUCTIONS.includes(text)
-                ? ("instruction" as const)
-                : ("directive" as const),
-            }));
-      setSuggestions(newSuggestions);
-      setSelectedIndex(0);
+      if (suggestionDebounceRef.current) {
+        clearTimeout(suggestionDebounceRef.current);
+        suggestionDebounceRef.current = null;
+      }
+      refreshSuggestionsImmediate(textarea, val, { explicit: true });
       return;
     }
 
@@ -1035,9 +1136,10 @@ function CodeEditorInner({
             return (
               <div
                 key={i}
-                className="flex items-center justify-between gap-1 px-2"
+                className="flex items-start justify-between gap-1 px-2"
                 style={{
                   lineHeight: `${lineHeight}px`,
+                  minHeight: lineBlockHeights[i],
                   backgroundColor: isCurrentLine(i)
                     ? `${colorScheme.accent}40`
                     : "transparent",
@@ -1084,6 +1186,9 @@ function CodeEditorInner({
               <div
                 key={i}
                 style={{
+                  lineHeight: `${lineHeight}px`,
+                  minHeight: lineBlockHeights[i],
+                  overflowWrap: "anywhere",
                   backgroundColor: isCurrentLine(i)
                     ? `${colorScheme.accent}20`
                     : "transparent",
@@ -1112,15 +1217,15 @@ function CodeEditorInner({
               updateCursorInfo(e.currentTarget);
               if (IGNORED_SUGGESTION_REFRESH_KEYS.has(e.key)) return;
               if (e.ctrlKey || e.metaKey || e.altKey) return;
-              refreshSuggestions(e.currentTarget, e.currentTarget.value);
+              scheduleSuggestionRefresh(e.currentTarget, e.currentTarget.value);
             }}
             onSelect={(e) => {
               updateCursorInfo(e.currentTarget);
-              refreshSuggestions(e.currentTarget, e.currentTarget.value);
+              scheduleSuggestionRefresh(e.currentTarget, e.currentTarget.value);
             }}
             onClick={(e) => {
               updateCursorInfo(e.currentTarget);
-              refreshSuggestions(e.currentTarget, e.currentTarget.value);
+              scheduleSuggestionRefresh(e.currentTarget, e.currentTarget.value);
             }}
             onScroll={handleScroll}
             onKeyDown={handleKeyDown}
