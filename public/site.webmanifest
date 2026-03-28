@@ -1,7 +1,7 @@
 {
-  "name": "Mano Forge",
+  "name": "Mano Forge - Mano Simulator",
   "short_name": "ManoForge",
-  "description": "A Mano computer simulator based on Morris Mano's basic computer architecture",
+  "description": "Mano Forge is a free Mano simulator for Morris Mano's basic computer architecture",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0a",

@@ -65,8 +65,8 @@ export default function HomePage() {
           >
             <div className="text-4xl sm:text-6xl md:text-9xl">Mano Forge</div>
             <div className="font-body text-sm sm:text-xl md:text-3xl">
-              A simulator based on Morris Mano&apos;s basic architecture of a
-              computer!
+              The Mano simulator for Morris Mano&apos;s basic computer
+              architecture.
             </div>
           </motion.div>
 
@@ -163,6 +163,18 @@ export default function HomePage() {
           <Editor />
         </motion.div>
       )}
+
+      <section className="sr-only" aria-label="Mano Forge SEO content">
+        <h1>Mano Forge: Free Online Mano Simulator</h1>
+        <p>
+          Mano Forge is a browser-based Mano simulator for students learning
+          Morris Mano&apos;s Basic Computer Architecture.
+        </p>
+        <p>
+          Use the built-in Mano assembler, debugger, register view, and memory
+          panel to write and execute Mano assembly programs step by step.
+        </p>
+      </section>
     </>
   );
 }
