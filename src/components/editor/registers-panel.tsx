@@ -299,7 +299,7 @@ function RegistersPanelInner() {
                               : colorScheme.textMuted,
                         }}
                       >
-                        {note}
+                        {note === "────────────────────" ? "" : note}
                       </div>
                     );
                   })}
