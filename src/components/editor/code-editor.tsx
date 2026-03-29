@@ -3,7 +3,7 @@
 import React from "react";
 import { useFileStore } from "@/stores/file-store";
 import { useThemeStore } from "@/stores/theme-store";
-import { useUiStore } from "@/stores/ui-store";
+import { useUiStore, editorFontStacks } from "@/stores/ui-store";
 import { Parser } from "@/lib/parser";
 import { tokenize } from "@/lib/tokenizer";
 import {
@@ -225,8 +225,15 @@ function CodeEditorInner({
     execution,
   } = useFileStore();
   const { colorScheme } = useThemeStore();
-  const { layoutMode, editorFontSize, setEditorFontSize, tabSize, setTabSize } =
-    useUiStore();
+  const {
+    layoutMode,
+    editorFontFamily,
+    editorFontSize,
+    setEditorFontSize,
+    tabSize,
+    setTabSize,
+  } = useUiStore();
+  const monoFontFamily = editorFontStacks[editorFontFamily];
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const highlightRef = React.useRef<HTMLDivElement>(null);
   const lineNumbersRef = React.useRef<HTMLDivElement>(null);
@@ -378,7 +385,7 @@ function CodeEditorInner({
     m.textContent = "0";
     const w = m.offsetWidth;
     setMonoCharWidth(w > 0 ? w : editorFontSize * 0.6);
-  }, [editorFontSize]);
+  }, [editorFontSize, monoFontFamily]);
 
   React.useEffect(() => {
     return () => {
@@ -522,14 +529,14 @@ function CodeEditorInner({
           setSelectedIndex(0);
           return;
         }
-        newSuggestions = [...INSTRUCTIONS, ...DIRECTIVES].slice(0, 8).map(
-          (t) => ({
+        newSuggestions = [...INSTRUCTIONS, ...DIRECTIVES]
+          .slice(0, 8)
+          .map((t) => ({
             text: t,
             type: INSTRUCTIONS.includes(t)
               ? ("instruction" as const)
               : ("directive" as const),
-          }),
-        );
+          }));
       } else if (
         !explicit &&
         suggestionsRef.current.length === 0 &&
@@ -708,11 +715,13 @@ function CodeEditorInner({
 
   React.useEffect(() => {
     if (!textareaRef.current || suggestions.length === 0) return;
-    refreshSuggestionsImmediate(
-      textareaRef.current,
-      textareaRef.current.value,
-    );
-  }, [editorFontSize, lineHeight, suggestions.length, refreshSuggestionsImmediate]);
+    refreshSuggestionsImmediate(textareaRef.current, textareaRef.current.value);
+  }, [
+    editorFontSize,
+    lineHeight,
+    suggestions.length,
+    refreshSuggestionsImmediate,
+  ]);
 
   const isCurrentLine = (lineIndex: number) => {
     // execution.currentLine stores the memory address (PC)
@@ -1129,7 +1138,11 @@ function CodeEditorInner({
         <div
           ref={lineNumbersRef}
           className="flex flex-col overflow-hidden py-2 text-right font-mono text-xs select-none"
-          style={{ minWidth: "3rem", backgroundColor: colorScheme.sidebar }}
+          style={{
+            minWidth: "3rem",
+            backgroundColor: colorScheme.sidebar,
+            fontFamily: monoFontFamily,
+          }}
         >
           {lines.map((_, i) => {
             const issue = labelDiagnostics.lineIssues[i + 1];
@@ -1179,6 +1192,7 @@ function CodeEditorInner({
             style={{
               fontSize: `${editorFontSize}px`,
               lineHeight: `${lineHeight}px`,
+              fontFamily: monoFontFamily,
             }}
             aria-hidden="true"
           >
@@ -1238,6 +1252,7 @@ function CodeEditorInner({
               lineHeight: `${lineHeight}px`,
               whiteSpace: "pre-wrap",
               overflowWrap: "anywhere",
+              fontFamily: monoFontFamily,
             }}
             placeholder="Start typing your Mano assembly code..."
           />
@@ -1245,7 +1260,10 @@ function CodeEditorInner({
           <span
             ref={measureRef}
             className="pointer-events-none invisible absolute font-mono whitespace-pre"
-            style={{ fontSize: `${editorFontSize}px` }}
+            style={{
+              fontSize: `${editorFontSize}px`,
+              fontFamily: monoFontFamily,
+            }}
             aria-hidden="true"
           />
 
@@ -1272,6 +1290,7 @@ function CodeEditorInner({
                     backgroundColor:
                       i === selectedIndex ? colorScheme.active : "transparent",
                     color: colorScheme.text,
+                    fontFamily: monoFontFamily,
                   }}
                   onMouseDown={(e) => {
                     e.preventDefault();

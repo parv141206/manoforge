@@ -27,7 +27,7 @@ const formatValue = (value: number, mode: DisplayMode, bits = 16): string => {
 function RegistersPanelInner() {
   const { registers, execution } = useFileStore();
   const { colorScheme } = useThemeStore();
-  const { layoutMode } = useUiStore();
+  const { layoutMode, executionLogMode } = useUiStore();
   const [displayMode, setDisplayMode] = useState<DisplayMode>("HEX");
   const [activeTab, setActiveTab] = useState<TabMode>("registers");
 
@@ -79,7 +79,7 @@ function RegistersPanelInner() {
       }}
     >
       <div
-        className="flex items-center justify-between gap-2 border-b px-2 py-[4px]"
+        className="flex items-center justify-between gap-2 border-b px-2 py-1"
         style={{ borderColor: colorScheme.border }}
       >
         <div className="flex">
@@ -255,12 +255,25 @@ function RegistersPanelInner() {
                 style={{ borderColor: colorScheme.border }}
               >
                 <div className="flex items-center justify-between px-1">
-                  <span
-                    className="text-[10px] font-semibold tracking-wide"
-                    style={{ color: colorScheme.textMuted }}
-                  >
-                    EXECUTION LOG
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <span
+                      className="text-[10px] font-semibold tracking-wide"
+                      style={{ color: colorScheme.textMuted }}
+                    >
+                      EXECUTION LOG
+                    </span>
+                    <span
+                      className="rounded border px-1 py-px text-[8px] uppercase"
+                      style={{
+                        borderColor: colorScheme.border,
+                        color: colorScheme.textMuted,
+                      }}
+                    >
+                      {executionLogMode === "detailed"
+                        ? "cycle"
+                        : "instruction"}
+                    </span>
+                  </div>
                   <span
                     className="font-mono text-[9px]"
                     style={{ color: colorScheme.textMuted }}

@@ -143,6 +143,10 @@ export const useFileStore = create<FileStore>()(
           openFileIds: state.openFileIds.includes(newFile.id)
             ? state.openFileIds
             : [...state.openFileIds, newFile.id],
+          execution: {
+            ...state.execution,
+            currentLine: null,
+          },
         }));
       },
 
@@ -180,7 +184,11 @@ export const useFileStore = create<FileStore>()(
       updateFileContent: (id, content) => {
         set((state) => ({
           files: state.files.map((f) => (f.id === id ? { ...f, content } : f)),
-          execution: { ...state.execution, isAssembled: false },
+          execution: {
+            ...state.execution,
+            isAssembled: false,
+            currentLine: null,
+          },
         }));
       },
 
@@ -191,6 +199,10 @@ export const useFileStore = create<FileStore>()(
             id && !state.openFileIds.includes(id)
               ? [...state.openFileIds, id]
               : state.openFileIds,
+          execution: {
+            ...state.execution,
+            currentLine: null,
+          },
         }));
       },
 
@@ -291,6 +303,10 @@ export const useFileStore = create<FileStore>()(
               .map((f) => f.id)
               .filter((id) => !state.openFileIds.includes(id)),
           ],
+          execution: {
+            ...state.execution,
+            currentLine: null,
+          },
         }));
       },
 

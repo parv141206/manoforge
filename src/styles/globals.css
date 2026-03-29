@@ -9,6 +9,56 @@
   font-family: "Gudlak";
   src: url("/fonts/Agoma.ttf") format("truetype");
 }
+@font-face {
+  font-family: "MF Monaspace Argon";
+  src:
+    url("/fonts/Monaspace%20Argon/Monaspace%20Argon%20Var.woff2")
+      format("woff2"),
+    url("/fonts/Monaspace%20Argon/Monaspace%20Argon%20Var.woff") format("woff");
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "MF Monaspace Krypton";
+  src:
+    url("/fonts/Monaspace%20Krypton/Monaspace%20Krypton%20Var.woff2")
+      format("woff2"),
+    url("/fonts/Monaspace%20Krypton/Monaspace%20Krypton%20Var.woff")
+      format("woff");
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "MF Monaspace Neon";
+  src:
+    url("/fonts/Monaspace%20Neon/Monaspace%20Neon%20Var.woff2") format("woff2"),
+    url("/fonts/Monaspace%20Neon/Monaspace%20Neon%20Var.woff") format("woff");
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "MF Monaspace Radon";
+  src:
+    url("/fonts/Monaspace%20Radon/Monaspace%20Radon%20Var.woff2")
+      format("woff2"),
+    url("/fonts/Monaspace%20Radon/Monaspace%20Radon%20Var.woff") format("woff");
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "MF Monaspace Xenon";
+  src:
+    url("/fonts/Monaspace%20Xenon/Monaspace%20Xenon%20Var.woff2")
+      format("woff2"),
+    url("/fonts/Monaspace%20Xenon/Monaspace%20Xenon%20Var.woff") format("woff");
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
 @theme {
   --font-sans:
     var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif,

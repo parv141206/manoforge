@@ -2,23 +2,19 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useFileStore } from "@/stores/file-store";
-import {
-  useThemeStore,
-  colorSchemes,
-  type SchemeName,
-} from "@/stores/theme-store";
+import { useThemeStore } from "@/stores/theme-store";
 import { useUiStore } from "@/stores/ui-store";
 import {
   VscDebugStart,
   VscDebugStepOver,
   VscDebugRestart,
-  VscSymbolColor,
-  VscCheck,
+  VscSettingsGear,
   VscDebugPause,
   VscBook,
 } from "react-icons/vsc";
 import { TbAssembly } from "react-icons/tb";
 import { DocsModal } from "./docs-modal";
+import { ThemeModal } from "./theme-modal";
 import { Parser } from "@/lib/parser";
 import { Assembler } from "@/lib/assembler";
 import { tokenize } from "@/lib/tokenizer";
@@ -44,28 +40,13 @@ export function Header() {
     resetExecution,
   } = useFileStore();
 
-  const { colorScheme, schemeName, setScheme, amoled, setAmoled } =
-    useThemeStore();
-  const { layoutMode, setLayoutMode } = useUiStore();
-  const [showThemeMenu, setShowThemeMenu] = useState(false);
+  const { colorScheme } = useThemeStore();
+  const { layoutMode, executionLogMode } = useUiStore();
+  const [showThemeModal, setShowThemeModal] = useState(false);
   const [showDocsModal, setShowDocsModal] = useState(false);
-  const themeMenuRef = useRef<HTMLDivElement>(null);
   const executorRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isExecutingRef = useRef(false);
   const stopRequestedRef = useRef(false);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        themeMenuRef.current &&
-        !themeMenuRef.current.contains(e.target as Node)
-      ) {
-        setShowThemeMenu(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   useEffect(() => {
     const intervalId = executorRef.current;
@@ -161,8 +142,49 @@ export function Header() {
     }
   };
 
+  const toHex = (n: number, pad = 4) =>
+    n.toString(16).toUpperCase().padStart(pad, "0");
+
+  const memoryInstructionNames = [
+    "AND",
+    "ADD",
+    "LDA",
+    "STA",
+    "BUN",
+    "BSA",
+    "ISZ",
+  ] as const;
+
+  const getRegisterInstructionNames = (ir: number) => {
+    const bit = ir & 0xfff;
+    const names: string[] = [];
+    if (bit & 0x800) names.push("CLA");
+    if (bit & 0x400) names.push("CLE");
+    if (bit & 0x200) names.push("CMA");
+    if (bit & 0x100) names.push("CME");
+    if (bit & 0x080) names.push("CIR");
+    if (bit & 0x040) names.push("CIL");
+    if (bit & 0x020) names.push("INC");
+    if (bit & 0x010) names.push("SPA");
+    if (bit & 0x008) names.push("SNA");
+    if (bit & 0x004) names.push("SZA");
+    if (bit & 0x002) names.push("SZE");
+    return names;
+  };
+
   const executeStep = async (delay = 0): Promise<boolean> => {
+    const detailedMode = executionLogMode === "detailed";
+
     const note = async (msg: string) => {
+      if (detailedMode) {
+        addNotation(msg);
+        if (delay > 0) await sleep(delay);
+      }
+      if (stopRequestedRef.current) return false;
+      return true;
+    };
+
+    const noteInstruction = async (msg: string) => {
       addNotation(msg);
       if (delay > 0) await sleep(delay);
       if (stopRequestedRef.current) return false;
@@ -180,9 +202,6 @@ export function Header() {
 
       setCurrentLine(pc);
 
-      const toHex = (n: number, pad = 4) =>
-        n.toString(16).toUpperCase().padStart(pad, "0");
-
       if (!(await note(`T0: AR <- PC (${toHex(pc, 3)})`))) return false;
       setRegister("AR", pc);
 
@@ -198,7 +217,9 @@ export function Header() {
       if (ir === 0x7001 || ir === 0) {
         setRunning(false);
         addNotation("HLT: Execution halted");
-        addNotation("────────────────────");
+        if (detailedMode) {
+          addNotation("────────────────────");
+        }
         return false;
       }
 
@@ -240,11 +261,22 @@ export function Header() {
         setRegister("DR", drValue);
       }
 
+      let instructionLogged = false;
+
       switch (opcode) {
         case 0: {
           const operand = state.memory[effectiveAddress] ?? 0;
           setRegister("AC", state.registers.AC & operand);
           if (!(await note(`T5: AND: AC <- AC & DR`))) return false;
+          if (!detailedMode) {
+            if (
+              !(await noteInstruction(
+                `AND ${toHex(effectiveAddress, 3)} => AC=${toHex(state.registers.AC & operand & 0xffff)}`,
+              ))
+            )
+              return false;
+            instructionLogged = true;
+          }
           break;
         }
         case 1: {
@@ -253,6 +285,15 @@ export function Header() {
           setRegister("AC", sum & 0xffff);
           setRegister("E", sum > 0xffff ? 1 : 0);
           if (!(await note(`T5: ADD: AC <- AC + DR`))) return false;
+          if (!detailedMode) {
+            if (
+              !(await noteInstruction(
+                `ADD ${toHex(effectiveAddress, 3)} => AC=${toHex(sum & 0xffff)}, E=${sum > 0xffff ? 1 : 0}`,
+              ))
+            )
+              return false;
+            instructionLogged = true;
+          }
           break;
         }
         case 2: {
@@ -260,24 +301,62 @@ export function Header() {
           setRegister("DR", operand);
           setRegister("AC", operand);
           if (!(await note(`T5: LDA: AC <- DR`))) return false;
+          if (!detailedMode) {
+            if (
+              !(await noteInstruction(
+                `LDA ${toHex(effectiveAddress, 3)} => AC=${toHex(operand)}`,
+              ))
+            )
+              return false;
+            instructionLogged = true;
+          }
           break;
         }
         case 3: {
           setMemoryWord(effectiveAddress, state.registers.AC);
           if (!(await note(`T5: STA: M[AR] <- AC`))) return false;
+          if (!detailedMode) {
+            if (
+              !(await noteInstruction(
+                `STA ${toHex(effectiveAddress, 3)} <= AC(${toHex(state.registers.AC)})`,
+              ))
+            )
+              return false;
+            instructionLogged = true;
+          }
           break;
         }
         case 4: {
           setRegister("PC", effectiveAddress);
           if (!(await note(`T4: BUN: PC <- AR`))) return false;
-          addNotation("────────────────────");
+          if (!detailedMode) {
+            if (
+              !(await noteInstruction(
+                `BUN ${toHex(effectiveAddress, 3)} => PC=${toHex(effectiveAddress, 3)}`,
+              ))
+            )
+              return false;
+          }
+          if (detailedMode) {
+            addNotation("────────────────────");
+          }
           return true;
         }
         case 5: {
           setMemoryWord(effectiveAddress, state.registers.PC + 1);
           setRegister("PC", effectiveAddress + 1);
           if (!(await note(`T4: BSA: M[AR] <- PC, PC <- AR + 1`))) return false;
-          addNotation("────────────────────");
+          if (!detailedMode) {
+            if (
+              !(await noteInstruction(
+                `BSA ${toHex(effectiveAddress, 3)} => M[${toHex(effectiveAddress, 3)}]=${toHex((state.registers.PC + 1) & 0xffff)}, PC=${toHex((effectiveAddress + 1) & 0xfff, 3)}`,
+              ))
+            )
+              return false;
+          }
+          if (detailedMode) {
+            addNotation("────────────────────");
+          }
           return true;
         }
         case 6: {
@@ -285,28 +364,63 @@ export function Header() {
           setRegister("DR", operand);
           const newValue = (operand + 1) & 0xffff;
           setMemoryWord(effectiveAddress, newValue);
+          const nextPc =
+            newValue === 0 ? state.registers.PC + 2 : state.registers.PC + 1;
           if (newValue === 0) {
-            setRegister("PC", state.registers.PC + 2);
+            setRegister("PC", nextPc);
             if (!(await note(`T5: ISZ: M[AR]++ = 0, PC <- PC + 1`)))
               return false;
           } else {
-            setRegister("PC", state.registers.PC + 1);
+            setRegister("PC", nextPc);
             if (!(await note(`T5: ISZ: M[AR]++ (${toHex(newValue)})`)))
               return false;
           }
-          addNotation("────────────────────");
+          if (!detailedMode) {
+            if (
+              !(await noteInstruction(
+                `ISZ ${toHex(effectiveAddress, 3)} => M=${toHex(newValue)}, PC=${toHex(nextPc & 0xfff, 3)}`,
+              ))
+            )
+              return false;
+          }
+          if (detailedMode) {
+            addNotation("────────────────────");
+          }
           return true;
         }
         case 7: {
           setRegister("PC", pc + 1);
           await handleRegisterInstruction(ir, note);
-          addNotation("────────────────────");
+          if (!detailedMode) {
+            const names = getRegisterInstructionNames(ir);
+            const instructionLabel = names.length > 0 ? names.join("+") : "REG";
+            if (
+              !(await noteInstruction(
+                `${instructionLabel} => AC=${toHex(useFileStore.getState().registers.AC)}, E=${useFileStore.getState().registers.E}, PC=${toHex(useFileStore.getState().registers.PC & 0xfff, 3)}`,
+              ))
+            )
+              return false;
+          }
+          if (detailedMode) {
+            addNotation("────────────────────");
+          }
           return true;
         }
       }
 
       setRegister("PC", pc + 1);
-      addNotation("────────────────────");
+      if (!detailedMode && !instructionLogged) {
+        const opName = memoryInstructionNames[opcode] ?? `OP${opcode}`;
+        if (
+          !(await noteInstruction(
+            `${opName} ${toHex(effectiveAddress, 3)} => PC=${toHex((pc + 1) & 0xfff, 3)}`,
+          ))
+        )
+          return false;
+      }
+      if (detailedMode) {
+        addNotation("────────────────────");
+      }
       return true;
     } catch {
       addNotation("Error: Execution failed");
@@ -528,129 +642,20 @@ export function Header() {
           <span className="hidden sm:inline">Reset</span>
         </button>
 
-        <div className="relative ml-1 sm:ml-2" ref={themeMenuRef}>
-          <button
-            onClick={() => setShowThemeMenu(!showThemeMenu)}
-            className="rounded p-2 transition-colors"
-            style={{ color: colorScheme.textMuted }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.backgroundColor = colorScheme.hover)
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.backgroundColor = "transparent")
-            }
-            title="Color Scheme"
-          >
-            <VscSymbolColor size={18} />
-          </button>
-
-          {showThemeMenu && (
-            <div
-              className="absolute top-full right-0 z-50 mt-2 min-w-52 rounded-lg py-1 shadow-xl"
-              style={{
-                backgroundColor: colorScheme.panel,
-                border: `1px solid ${colorScheme.border}`,
-              }}
-            >
-              {(Object.keys(colorSchemes) as SchemeName[]).map((key) => (
-                <button
-                  key={key}
-                  onClick={() => {
-                    setScheme(key);
-                    setShowThemeMenu(false);
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors"
-                  style={{ color: colorScheme.text }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.backgroundColor = colorScheme.hover)
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.backgroundColor = "transparent")
-                  }
-                >
-                  <span
-                    className="h-3 w-3 rounded-full"
-                    style={{ backgroundColor: colorSchemes[key].accent }}
-                  />
-                  <span className="flex-1 capitalize">{key}</span>
-                  {schemeName === key && (
-                    <VscCheck size={14} style={{ color: colorScheme.accent }} />
-                  )}
-                </button>
-              ))}
-
-              <div
-                className="my-1 border-t"
-                style={{ borderColor: colorScheme.border }}
-              />
-
-              <div className="px-3 py-2">
-                <div
-                  className="mb-2 text-[11px] font-medium uppercase"
-                  style={{ color: colorScheme.textMuted }}
-                >
-                  Layout
-                </div>
-                <div
-                  className="flex items-center rounded border p-0.5"
-                  style={{ borderColor: colorScheme.border }}
-                >
-                  <button
-                    onClick={() => setLayoutMode("floating")}
-                    className="flex-1 rounded px-2 py-1 text-xs"
-                    style={{
-                      backgroundColor:
-                        layoutMode === "floating"
-                          ? colorScheme.active
-                          : "transparent",
-                      color: colorScheme.text,
-                    }}
-                  >
-                    Floating
-                  </button>
-                  <button
-                    onClick={() => setLayoutMode("compact")}
-                    className="flex-1 rounded px-2 py-1 text-xs"
-                    style={{
-                      backgroundColor:
-                        layoutMode === "compact"
-                          ? colorScheme.active
-                          : "transparent",
-                      color: colorScheme.text,
-                    }}
-                  >
-                    Compact
-                  </button>
-                </div>
-              </div>
-
-              <div className="px-3 pb-2">
-                <button
-                  onClick={() => setAmoled(!amoled)}
-                  className="flex w-full items-center justify-between rounded border px-2 py-1.5 text-xs"
-                  style={{
-                    borderColor: colorScheme.border,
-                    backgroundColor: amoled
-                      ? `${colorScheme.accent}20`
-                      : "transparent",
-                    color: colorScheme.text,
-                  }}
-                >
-                  <span>AMOLED mode</span>
-                  <span
-                    style={{
-                      color: amoled
-                        ? colorScheme.accent
-                        : colorScheme.textMuted,
-                    }}
-                  >
-                    {amoled ? "ON" : "OFF"}
-                  </span>
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        <button
+          onClick={() => setShowThemeModal(true)}
+          className="ml-1 rounded p-2 transition-colors sm:ml-2"
+          style={{ color: colorScheme.textMuted }}
+          onMouseEnter={(e) =>
+            (e.currentTarget.style.backgroundColor = colorScheme.hover)
+          }
+          onMouseLeave={(e) =>
+            (e.currentTarget.style.backgroundColor = "transparent")
+          }
+          title="Appearance settings"
+        >
+          <VscSettingsGear size={18} />
+        </button>
 
         <button
           onClick={() => setShowDocsModal(true)}
@@ -671,6 +676,10 @@ export function Header() {
       <DocsModal
         isOpen={showDocsModal}
         onClose={() => setShowDocsModal(false)}
+      />
+      <ThemeModal
+        isOpen={showThemeModal}
+        onClose={() => setShowThemeModal(false)}
       />
     </div>
   );
