@@ -14,6 +14,7 @@ function MemoryPanelInner() {
   const { colorScheme } = useThemeStore();
   const { layoutMode } = useUiStore();
   const [search, setSearch] = useState("");
+  const [addressMode, setAddressMode] = useState<"HEX" | "DEC">("HEX");
   const [page, setPage] = useState(0);
   const [cols, setCols] = useState(16);
   const [isMobile, setIsMobile] = useState(false);
@@ -41,9 +42,9 @@ function MemoryPanelInner() {
 
   const searchAddress = useMemo(() => {
     if (!search) return null;
-    const addr = parseInt(search, 16);
+    const addr = parseInt(search, addressMode === "HEX" ? 16 : 10);
     return isNaN(addr) ? null : addr;
-  }, [search]);
+  }, [search, addressMode]);
 
   const displayPage = useMemo(() => {
     if (searchAddress !== null && searchAddress >= 0 && searchAddress < 4096) {
@@ -89,6 +90,16 @@ function MemoryPanelInner() {
     };
   }, []);
 
+  const formatAddress = (addr: number) =>
+    addressMode === "HEX"
+      ? addr.toString(16).toUpperCase().padStart(3, "0")
+      : addr.toString(10).padStart(4, "0");
+
+  const formatColumnOffset = (offset: number) =>
+    addressMode === "HEX"
+      ? offset.toString(16).toUpperCase()
+      : offset.toString(10).padStart(2, "0");
+
   const GridView = () => (
     <div className="flex h-full flex-col">
       <div
@@ -114,11 +125,10 @@ function MemoryPanelInner() {
             className="min-w-12.5 text-center font-mono text-[9px]"
             style={{ color: colorScheme.textMuted }}
           >
-            {startAddr.toString(16).toUpperCase().padStart(3, "0")} -{" "}
-            {Math.min(startAddr + ROWS_PER_PAGE * cols - 1, 4095)
-              .toString(16)
-              .toUpperCase()
-              .padStart(3, "0")}
+            {formatAddress(startAddr)} -{" "}
+            {formatAddress(
+              Math.min(startAddr + ROWS_PER_PAGE * cols - 1, 4095),
+            )}
           </span>
           <button
             onClick={() => goToPage(displayPage + 1)}
@@ -164,7 +174,7 @@ function MemoryPanelInner() {
                     color: colorScheme.textMuted,
                   }}
                 >
-                  {i.toString(16).toUpperCase()}
+                  {formatColumnOffset(i)}
                 </th>
               ))}
             </tr>
@@ -180,7 +190,7 @@ function MemoryPanelInner() {
                     className="px-1 py-0.5"
                     style={{ color: colorScheme.accent }}
                   >
-                    {rowStart.toString(16).toUpperCase().padStart(3, "0")}
+                    {formatAddress(rowStart)}
                   </td>
                   {Array.from({ length: cols }, (_, col) => {
                     const addr = rowStart + col;
@@ -213,8 +223,8 @@ function MemoryPanelInner() {
                         }}
                         title={
                           hasInfo
-                            ? `${addr.toString(16).toUpperCase()}: ${info?.label ? info.label + " - " : ""}${info?.instruction ?? ""}`
-                            : `${addr.toString(16).toUpperCase()}: ${value.toString(16).toUpperCase().padStart(4, "0")}`
+                            ? `${formatAddress(addr)}: ${info?.label ? info.label + " - " : ""}${info?.instruction ?? ""}`
+                            : `${formatAddress(addr)}: ${value.toString(16).toUpperCase().padStart(4, "0")}`
                         }
                       >
                         {value.toString(16).toUpperCase().padStart(4, "0")}
@@ -343,7 +353,7 @@ function MemoryPanelInner() {
                         style={{ color: colorScheme.accent }}
                       >
                         {isPC ? "▶ " : "  "}
-                        {addr.toString(16).toUpperCase().padStart(3, "0")}
+                        {formatAddress(addr)}
                       </td>
                       <td
                         className="px-2 py-0.5"
@@ -412,10 +422,29 @@ function MemoryPanelInner() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search address (hex)"
+            placeholder={`Search address (${addressMode.toLowerCase()})`}
             className="w-full bg-transparent font-mono text-xs outline-none"
             style={{ color: colorScheme.text }}
           />
+        </div>
+        <div className="ml-2 flex items-center gap-1 pr-2">
+          {(["HEX", "DEC"] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setAddressMode(mode)}
+              className="rounded px-1.5 py-0.5 text-[9px] font-medium transition-colors"
+              style={{
+                color:
+                  addressMode === mode
+                    ? colorScheme.background
+                    : colorScheme.textMuted,
+                backgroundColor:
+                  addressMode === mode ? colorScheme.accent : "transparent",
+              }}
+            >
+              {mode}
+            </button>
+          ))}
         </div>
       </div>
 

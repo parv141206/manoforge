@@ -50,7 +50,7 @@ export class Assembler {
       /** first case is that if the instruction itself has a starting label. i mean like for BUN and controlling loops we do add labels to instructions, so this is that */
       if (node.type === "Instruction" && node.label) {
         this.symbolTable.set(node.label, this.locationCounter);
-      } else if (node.type === "Data") {
+      } else if (node.type === "Data" && node.label) {
         /** second case is that if the instruction is a data declaration, then i obviously add the label to the symbol table with the current location counter */
         this.symbolTable.set(node.label, this.locationCounter);
       }
@@ -119,7 +119,7 @@ export class Assembler {
       } else if (node.type === "Data") {
         let value = parseValueByDatatype(node.value, node.datatype);
         machineCode = numToHex(value, 4);
-        label = node.label;
+        label = node.label ?? undefined;
         instr = `${node.datatype} ${node.value}`;
       }
       if (machineCode) {

@@ -274,13 +274,10 @@ export class Parser {
 
     // checking if this is data declaration
     else if (this.check(token, "DATATYPE")) {
-      if (!label) {
-        this.error("Data declaration must have a label");
-      }
       const dataInfo = this.parseData();
       return {
         type: "Data",
-        label: label,
+        label,
         datatype: dataInfo.datatype,
         value: dataInfo.value,
         line: lineNumber,
@@ -331,7 +328,10 @@ export class Parser {
     if (this.check(token, "NUMBER")) {
       value = this.consume("NUMBER", "Expected number after data type").value;
     } else if (this.check(token, "IDENTIFIER")) {
-      value = this.consume("IDENTIFIER", "Expected value after data type").value;
+      value = this.consume(
+        "IDENTIFIER",
+        "Expected value after data type",
+      ).value;
       if (datatype === "HEX") {
         if (!/^[0-9A-Fa-f]+$/.test(value)) {
           this.error("Invalid hexadecimal value");

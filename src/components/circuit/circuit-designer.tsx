@@ -1638,6 +1638,7 @@ function CircuitDesignerInner() {
     components: CircuitComponent[];
     wires: CircuitWire[];
   } | null>(null);
+  const spacePressedRef = React.useRef(false);
   const viewportRef = React.useRef<CircuitViewport>(design.viewport);
   const viewportFrameRef = React.useRef<number | null>(null);
   const wheelGestureRef = React.useRef<{
@@ -2463,6 +2464,12 @@ function CircuitDesignerInner() {
       )
         return;
 
+      if (event.code === "Space") {
+        event.preventDefault();
+        spacePressedRef.current = true;
+        return;
+      }
+
       if ((event.key === "Backspace" || event.key === "Delete") && wireDraft) {
         event.preventDefault();
         setWireDraft((current) => {
@@ -2559,8 +2566,17 @@ function CircuitDesignerInner() {
         setSelectedFreeWireId(null);
       }
     };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space") {
+        spacePressedRef.current = false;
+      }
+    };
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
   }, [
     addComponents,
     deleteSelected,
@@ -2578,6 +2594,15 @@ function CircuitDesignerInner() {
     component: CircuitComponent,
   ) => {
     if (design.simulation.mode !== "design") return;
+    if (spacePressedRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      setPanStart({
+        pointer: { x: event.clientX, y: event.clientY },
+        viewport: design.viewport,
+      });
+      return;
+    }
     event.stopPropagation();
     const selected = design.selectedIds.includes(component.id)
       ? design.components.filter((candidate) =>
@@ -2600,6 +2625,13 @@ function CircuitDesignerInner() {
   const handleCanvasPointerDown = (
     event: React.PointerEvent<HTMLDivElement>,
   ) => {
+    if (spacePressedRef.current && event.button === 0) {
+      setPanStart({
+        pointer: { x: event.clientX, y: event.clientY },
+        viewport: design.viewport,
+      });
+      return;
+    }
     if (event.button === 1 || event.shiftKey || event.altKey) {
       setPanStart({
         pointer: { x: event.clientX, y: event.clientY },
@@ -3191,8 +3223,20 @@ function CircuitDesignerInner() {
           />
         </div>
 
-        <div className="absolute bottom-3 left-3 z-30">
+        <div className="absolute bottom-3 left-3 z-30 flex flex-col gap-2">
           <IssuePanel issues={issues} />
+          {design.simulation.mode === "design" && (
+            <div
+              className="w-fit rounded border px-2 py-1 text-[10px] font-medium tracking-wide"
+              style={{
+                backgroundColor: colorScheme.panel,
+                borderColor: colorScheme.border,
+                color: colorScheme.text,
+              }}
+            >
+              Space + drag to pan
+            </div>
+          )}
         </div>
 
         {(selectedTool ?? selectedCustomCircuitId ?? wireDraft) &&

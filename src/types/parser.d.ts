@@ -26,7 +26,7 @@ type ASTNode =
     }
   | {
       type: "Data";
-      label: string;
+      label: string | null;
       datatype: string;
       value: string;
       line: number;
