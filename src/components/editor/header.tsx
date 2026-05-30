@@ -11,6 +11,7 @@ import {
   VscSettingsGear,
   VscDebugPause,
   VscBook,
+  VscCircuitBoard,
 } from "react-icons/vsc";
 import { TbAssembly } from "react-icons/tb";
 import { DocsModal } from "./docs-modal";
@@ -21,7 +22,14 @@ import { tokenize } from "@/lib/tokenizer";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export function Header() {
+type WorkspaceMode = "assembly" | "circuit";
+
+type HeaderProps = {
+  workspaceMode: WorkspaceMode;
+  onWorkspaceModeChange: (mode: WorkspaceMode) => void;
+};
+
+export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
   const {
     files,
     activeFileId,
@@ -550,97 +558,155 @@ export function Header() {
             : `1px solid ${colorScheme.border}`,
       }}
     >
-      <div className="hidden items-center gap-4 sm:flex">
+      <div className="flex items-center gap-3">
         <h1
-          className="font-title text-lg font-bold tracking-wide"
+          className="font-title hidden text-lg font-bold tracking-wide sm:block"
           style={{ color: colorScheme.accent }}
         >
           MANO FORGE
         </h1>
+        <div
+          className="flex items-center gap-1 rounded border p-1"
+          style={{
+            backgroundColor: colorScheme.panel,
+            borderColor: colorScheme.border,
+          }}
+        >
+          <button
+            onClick={() => onWorkspaceModeChange("assembly")}
+            className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors"
+            style={{
+              backgroundColor:
+                workspaceMode === "assembly"
+                  ? colorScheme.active
+                  : "transparent",
+              color:
+                workspaceMode === "assembly"
+                  ? colorScheme.text
+                  : colorScheme.textMuted,
+            }}
+          >
+            <TbAssembly size={14} />
+            <span className="hidden sm:inline">Assembly</span>
+          </button>
+          <button
+            onClick={() => onWorkspaceModeChange("circuit")}
+            className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors"
+            style={{
+              backgroundColor:
+                workspaceMode === "circuit"
+                  ? colorScheme.active
+                  : "transparent",
+              color:
+                workspaceMode === "circuit"
+                  ? colorScheme.text
+                  : colorScheme.textMuted,
+            }}
+          >
+            <VscCircuitBoard size={14} />
+            <span className="hidden sm:inline">Circuit</span>
+          </button>
+        </div>
+        {workspaceMode === "circuit" && (
+          <div
+            className="hidden items-center gap-1 text-xs sm:flex"
+            style={{ color: colorScheme.textMuted }}
+          >
+            <VscCircuitBoard size={12} />
+            <span>Circuit Designer</span>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">
-        <div className="mr-4 hidden items-center gap-1 sm:flex">
-          <span className="text-xs" style={{ color: colorScheme.textMuted }}>
-            Delay
-          </span>
-          <input
-            type="range"
-            min="1"
-            max="5000"
-            step="50"
-            value={execution.delay}
-            onChange={(e) => setDelay(Number(e.target.value))}
-            className="w-20 accent-current"
-            style={{ accentColor: colorScheme.accent }}
-          />
-          <span
-            className="w-14 text-xs"
-            style={{ color: colorScheme.textMuted }}
-          >
-            {execution.delay}ms
-          </span>
-        </div>
+        {workspaceMode === "assembly" && (
+          <>
+            <div className="mr-4 hidden items-center gap-1 sm:flex">
+              <span
+                className="text-xs"
+                style={{ color: colorScheme.textMuted }}
+              >
+                Delay
+              </span>
+              <input
+                type="range"
+                min="1"
+                max="5000"
+                step="50"
+                value={execution.delay}
+                onChange={(e) => setDelay(Number(e.target.value))}
+                className="w-20 accent-current"
+                style={{ accentColor: colorScheme.accent }}
+              />
+              <span
+                className="w-14 text-xs"
+                style={{ color: colorScheme.textMuted }}
+              >
+                {execution.delay}ms
+              </span>
+            </div>
 
-        <button
-          onClick={handleAssemble}
-          className="flex items-center gap-1 rounded p-2 text-sm font-medium transition-opacity sm:gap-1.5 sm:px-3 sm:py-1.5"
-          style={{
-            backgroundColor: colorScheme.accent,
-            color: colorScheme.background,
-          }}
-          title="Assemble"
-        >
-          <TbAssembly size={16} />
-          <span className="hidden sm:inline">Assemble</span>
-        </button>
+            <button
+              onClick={handleAssemble}
+              className="flex items-center gap-1 rounded p-2 text-sm font-medium transition-opacity sm:gap-1.5 sm:px-3 sm:py-1.5"
+              style={{
+                backgroundColor: colorScheme.accent,
+                color: colorScheme.background,
+              }}
+              title="Assemble"
+            >
+              <TbAssembly size={16} />
+              <span className="hidden sm:inline">Assemble</span>
+            </button>
 
-        <button
-          onClick={handleRun}
-          disabled={!execution.isAssembled}
-          className="flex items-center gap-1 rounded p-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-40 sm:gap-1.5 sm:px-3 sm:py-1.5"
-          style={{
-            backgroundColor: execution.isRunning ? "#ef4444" : "#22c55e",
-            color: "#fff",
-          }}
-          title={execution.isRunning ? "Pause" : "Run"}
-        >
-          {execution.isRunning ? (
-            <VscDebugPause size={16} />
-          ) : (
-            <VscDebugStart size={16} />
-          )}
-          <span className="hidden sm:inline">
-            {execution.isRunning ? "Pause" : "Run"}
-          </span>
-        </button>
+            <button
+              onClick={handleRun}
+              disabled={!execution.isAssembled}
+              className="flex items-center gap-1 rounded p-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-40 sm:gap-1.5 sm:px-3 sm:py-1.5"
+              style={{
+                backgroundColor: execution.isRunning ? "#ef4444" : "#22c55e",
+                color: "#fff",
+              }}
+              title={execution.isRunning ? "Pause" : "Run"}
+            >
+              {execution.isRunning ? (
+                <VscDebugPause size={16} />
+              ) : (
+                <VscDebugStart size={16} />
+              )}
+              <span className="hidden sm:inline">
+                {execution.isRunning ? "Pause" : "Run"}
+              </span>
+            </button>
 
-        <button
-          onClick={handleStep}
-          disabled={!execution.isAssembled || execution.isRunning}
-          className="flex items-center gap-1 rounded p-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-40 sm:gap-1.5 sm:px-3 sm:py-1.5"
-          style={{
-            backgroundColor: colorScheme.hover,
-            color: colorScheme.text,
-          }}
-          title="Step"
-        >
-          <VscDebugStepOver size={16} />
-          <span className="hidden sm:inline">Step</span>
-        </button>
+            <button
+              onClick={handleStep}
+              disabled={!execution.isAssembled || execution.isRunning}
+              className="flex items-center gap-1 rounded p-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-40 sm:gap-1.5 sm:px-3 sm:py-1.5"
+              style={{
+                backgroundColor: colorScheme.hover,
+                color: colorScheme.text,
+              }}
+              title="Step"
+            >
+              <VscDebugStepOver size={16} />
+              <span className="hidden sm:inline">Step</span>
+            </button>
 
-        <button
-          onClick={handleReset}
-          className="flex items-center gap-1 rounded p-2 text-sm font-medium transition-opacity sm:gap-1.5 sm:px-3 sm:py-1.5"
-          style={{
-            backgroundColor: colorScheme.hover,
-            color: colorScheme.text,
-          }}
-          title="Reset"
-        >
-          <VscDebugRestart size={16} />
-          <span className="hidden sm:inline">Reset</span>
-        </button>
+            <button
+              onClick={handleReset}
+              className="flex items-center gap-1 rounded p-2 text-sm font-medium transition-opacity sm:gap-1.5 sm:px-3 sm:py-1.5"
+              style={{
+                backgroundColor: colorScheme.hover,
+                color: colorScheme.text,
+              }}
+              title="Reset"
+            >
+              <VscDebugRestart size={16} />
+              <span className="hidden sm:inline">Reset</span>
+            </button>
+          </>
+        )}
 
         <button
           onClick={() => setShowThemeModal(true)}
@@ -657,20 +723,22 @@ export function Header() {
           <VscSettingsGear size={18} />
         </button>
 
-        <button
-          onClick={() => setShowDocsModal(true)}
-          className="rounded p-2 transition-colors"
-          style={{ color: colorScheme.textMuted }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.backgroundColor = colorScheme.hover)
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.backgroundColor = "transparent")
-          }
-          title="Documentation"
-        >
-          <VscBook size={18} />
-        </button>
+        {workspaceMode === "assembly" && (
+          <button
+            onClick={() => setShowDocsModal(true)}
+            className="rounded p-2 transition-colors"
+            style={{ color: colorScheme.textMuted }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.backgroundColor = colorScheme.hover)
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.backgroundColor = "transparent")
+            }
+            title="Documentation"
+          >
+            <VscBook size={18} />
+          </button>
+        )}
       </div>
 
       <DocsModal

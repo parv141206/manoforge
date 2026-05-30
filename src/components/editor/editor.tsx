@@ -11,16 +11,8 @@ import { CircuitDesigner } from "@/components/circuit/circuit-designer";
 import { useThemeStore } from "@/stores/theme-store";
 import { useUiStore } from "@/stores/ui-store";
 import { useFileStore } from "@/stores/file-store";
-import {
-  VscCircuitBoard,
-  VscMenu,
-  VscSymbolNumeric,
-  VscClose,
-  VscSettingsGear,
-} from "react-icons/vsc";
-import { TbAssembly } from "react-icons/tb";
+import { VscMenu, VscSymbolNumeric, VscClose } from "react-icons/vsc";
 import { Resizable, ResizablePanel } from "@/components/ui/resizable";
-import { ThemeModal } from "./theme-modal";
 
 type MobilePanel = "registers" | "memory" | null;
 type SplitDirection = "vertical" | "horizontal";
@@ -44,7 +36,6 @@ export function Editor() {
   const [isDraggingSplit, setIsDraggingSplit] = React.useState(false);
   const [workspaceMode, setWorkspaceMode] =
     React.useState<WorkspaceMode>("assembly");
-  const [showCircuitSettings, setShowCircuitSettings] = React.useState(false);
   const splitContainerRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -191,78 +182,11 @@ export function Editor() {
         >
           <VscMenu size={20} />
         </button>
-        <div
-          className="flex shrink-0 items-center gap-1 rounded border p-1"
-          style={{
-            backgroundColor: colorScheme.panel,
-            borderColor: colorScheme.border,
-          }}
-        >
-          <button
-            onClick={() => setWorkspaceMode("assembly")}
-            className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors"
-            style={{
-              backgroundColor:
-                workspaceMode === "assembly"
-                  ? colorScheme.active
-                  : "transparent",
-              color:
-                workspaceMode === "assembly"
-                  ? colorScheme.text
-                  : colorScheme.textMuted,
-            }}
-          >
-            <TbAssembly size={14} />
-            <span className="hidden sm:inline">Assembly</span>
-          </button>
-          <button
-            onClick={() => setWorkspaceMode("circuit")}
-            className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors"
-            style={{
-              backgroundColor:
-                workspaceMode === "circuit"
-                  ? colorScheme.active
-                  : "transparent",
-              color:
-                workspaceMode === "circuit"
-                  ? colorScheme.text
-                  : colorScheme.textMuted,
-            }}
-          >
-            <VscCircuitBoard size={14} />
-            <span className="hidden sm:inline">Circuit</span>
-          </button>
-        </div>
         <div className="h-full flex-1">
-          {workspaceMode === "assembly" ? (
-            <Header />
-          ) : (
-            <div
-              className={`flex h-full items-center justify-between rounded-lg border px-3 ${layoutMode === "compact" ? "rounded-none" : ""}`}
-              style={{
-                backgroundColor: colorScheme.panel,
-                borderColor: colorScheme.border,
-              }}
-            >
-              <div className="min-w-0">
-                <div className="text-sm font-semibold">Circuit Designer</div>
-                <div
-                  className="hidden truncate text-xs md:block"
-                  style={{ color: colorScheme.textMuted }}
-                >
-                  Infinite canvas, live validation, and Logisim-style simulation
-                </div>
-              </div>
-              <button
-                onClick={() => setShowCircuitSettings(true)}
-                className="rounded p-2 transition-colors"
-                style={{ color: colorScheme.textMuted }}
-                title="Appearance settings"
-              >
-                <VscSettingsGear size={18} />
-              </button>
-            </div>
-          )}
+          <Header
+            workspaceMode={workspaceMode}
+            onWorkspaceModeChange={setWorkspaceMode}
+          />
         </div>
         <button
           onClick={handlePanelToggle}
@@ -283,10 +207,6 @@ export function Editor() {
       {workspaceMode === "circuit" ? (
         <div className="min-h-0 flex-1 overflow-hidden">
           <CircuitDesigner />
-          <ThemeModal
-            isOpen={showCircuitSettings}
-            onClose={() => setShowCircuitSettings(false)}
-          />
         </div>
       ) : (
         <div className="hidden flex-1 overflow-hidden md:flex">
