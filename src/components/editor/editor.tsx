@@ -7,20 +7,31 @@ import { Sidebar } from "./sidebar";
 import { CodeEditor } from "./code-editor";
 import { RegistersPanel } from "./registers-panel";
 import { MemoryPanel } from "./memory-panel";
+import { CircuitDesigner } from "@/components/circuit/circuit-designer";
 import { useThemeStore } from "@/stores/theme-store";
 import { useUiStore } from "@/stores/ui-store";
 import { useFileStore } from "@/stores/file-store";
-import { VscMenu, VscSymbolNumeric, VscClose } from "react-icons/vsc";
+import {
+  VscCircuitBoard,
+  VscMenu,
+  VscSymbolNumeric,
+  VscClose,
+  VscSettingsGear,
+} from "react-icons/vsc";
+import { TbAssembly } from "react-icons/tb";
 import { Resizable, ResizablePanel } from "@/components/ui/resizable";
+import { ThemeModal } from "./theme-modal";
 
 type MobilePanel = "registers" | "memory" | null;
 type SplitDirection = "vertical" | "horizontal";
 type DropEdge = "left" | "right" | "top" | "bottom";
+type WorkspaceMode = "assembly" | "circuit";
 
 export function Editor() {
   const { colorScheme } = useThemeStore();
   const { layoutMode } = useUiStore();
-  const { activeFileId, files, setActiveFile } = useFileStore();
+  const { activeFileId, files, setActiveFile, execution, setDelay } =
+    useFileStore();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [mobilePanelOpen, setMobilePanelOpen] = React.useState(false);
   const [activeMobilePanel, setActiveMobilePanel] =
@@ -31,6 +42,9 @@ export function Editor() {
   const [dropEdge, setDropEdge] = React.useState<DropEdge | null>(null);
   const [splitRatio, setSplitRatio] = React.useState(50);
   const [isDraggingSplit, setIsDraggingSplit] = React.useState(false);
+  const [workspaceMode, setWorkspaceMode] =
+    React.useState<WorkspaceMode>("assembly");
+  const [showCircuitSettings, setShowCircuitSettings] = React.useState(false);
   const splitContainerRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -177,221 +191,309 @@ export function Editor() {
         >
           <VscMenu size={20} />
         </button>
+        <div
+          className="flex shrink-0 items-center gap-1 rounded border p-1"
+          style={{
+            backgroundColor: colorScheme.panel,
+            borderColor: colorScheme.border,
+          }}
+        >
+          <button
+            onClick={() => setWorkspaceMode("assembly")}
+            className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors"
+            style={{
+              backgroundColor:
+                workspaceMode === "assembly"
+                  ? colorScheme.active
+                  : "transparent",
+              color:
+                workspaceMode === "assembly"
+                  ? colorScheme.text
+                  : colorScheme.textMuted,
+            }}
+          >
+            <TbAssembly size={14} />
+            <span className="hidden sm:inline">Assembly</span>
+          </button>
+          <button
+            onClick={() => setWorkspaceMode("circuit")}
+            className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors"
+            style={{
+              backgroundColor:
+                workspaceMode === "circuit"
+                  ? colorScheme.active
+                  : "transparent",
+              color:
+                workspaceMode === "circuit"
+                  ? colorScheme.text
+                  : colorScheme.textMuted,
+            }}
+          >
+            <VscCircuitBoard size={14} />
+            <span className="hidden sm:inline">Circuit</span>
+          </button>
+        </div>
         <div className="h-full flex-1">
-          <Header />
+          {workspaceMode === "assembly" ? (
+            <Header />
+          ) : (
+            <div
+              className={`flex h-full items-center justify-between rounded-lg border px-3 ${layoutMode === "compact" ? "rounded-none" : ""}`}
+              style={{
+                backgroundColor: colorScheme.panel,
+                borderColor: colorScheme.border,
+              }}
+            >
+              <div className="min-w-0">
+                <div className="text-sm font-semibold">Circuit Designer</div>
+                <div
+                  className="hidden truncate text-xs md:block"
+                  style={{ color: colorScheme.textMuted }}
+                >
+                  Infinite canvas, live validation, and Logisim-style simulation
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCircuitSettings(true)}
+                className="rounded p-2 transition-colors"
+                style={{ color: colorScheme.textMuted }}
+                title="Appearance settings"
+              >
+                <VscSettingsGear size={18} />
+              </button>
+            </div>
+          )}
         </div>
         <button
           onClick={handlePanelToggle}
           className="rounded p-2 transition-colors md:hidden"
+          disabled={workspaceMode === "circuit"}
           style={{
             backgroundColor: colorScheme.panel,
-            color: colorScheme.textMuted,
+            color:
+              workspaceMode === "circuit"
+                ? `${colorScheme.textMuted}66`
+                : colorScheme.textMuted,
           }}
         >
           <VscSymbolNumeric size={20} />
         </button>
       </div>
 
-      <div className="hidden flex-1 overflow-hidden md:flex">
-        <Resizable
-          direction="vertical"
-          defaultSizes={[75, 25]}
-          minSizes={[30, 15]}
-          maxSizes={[90, 70]}
-        >
-          <ResizablePanel className="h-full">
-            <Resizable
-              direction="horizontal"
-              defaultSizes={[18, 60, 22]}
-              minSizes={[10, 30, 15]}
-              maxSizes={[30, 80, 35]}
-            >
-              <ResizablePanel className="h-full">
-                <Sidebar />
-              </ResizablePanel>
-
-              <ResizablePanel className="h-full">
-                <div
-                  ref={splitContainerRef}
-                  className="relative h-full overflow-hidden"
-                  onDragOver={handleEditorDragOver}
-                  onDrop={handleEditorDrop}
-                  onDragLeave={(e) => {
-                    if (e.currentTarget === e.target) {
-                      setDropEdge(null);
-                    }
-                  }}
-                >
-                  {splitFileId ? (
-                    <div
-                      className={`flex h-full w-full transition-all duration-200 ${splitDirection === "vertical" ? "flex-row" : "flex-col"}`}
-                    >
-                      <div
-                        className={`transition-all duration-200 ${splitDirection === "vertical" ? "h-full border-r" : "w-full border-b"}`}
-                        style={{
-                          borderColor: colorScheme.border,
-                          width:
-                            splitDirection === "vertical"
-                              ? `${splitRatio}%`
-                              : undefined,
-                          height:
-                            splitDirection === "horizontal"
-                              ? `${splitRatio}%`
-                              : undefined,
-                        }}
-                      >
-                        <CodeEditor
-                          fileIdOverride={activeFileId ?? undefined}
-                          onExternalFileDrop={replacePrimaryPaneFile}
-                        />
-                      </div>
-
-                      <div
-                        onMouseDown={() => setIsDraggingSplit(true)}
-                        className={`z-20 shrink-0 transition-colors ${splitDirection === "vertical" ? "h-full w-px cursor-col-resize" : "h-px w-full cursor-row-resize"}`}
-                        style={{
-                          backgroundColor: isDraggingSplit
-                            ? colorScheme.accent
-                            : colorScheme.border,
-                        }}
-                      />
-
-                      <div className="relative min-h-0 min-w-0 flex-1 transition-all duration-200">
-                        <div
-                          className="absolute top-2 right-2 z-20 flex items-center gap-1 rounded px-1 py-1"
-                          style={{
-                            backgroundColor: colorScheme.panel,
-                            border: `1px solid ${colorScheme.border}`,
-                          }}
-                        >
-                          <button
-                            onClick={() =>
-                              setSplitDirection((prev) =>
-                                prev === "vertical" ? "horizontal" : "vertical",
-                              )
-                            }
-                            className="rounded px-1.5 py-0.5 text-[10px]"
-                            style={{ color: colorScheme.textMuted }}
-                            title="Toggle split direction"
-                          >
-                            {splitDirection === "vertical" ? "↕" : "↔"}
-                          </button>
-                          <button
-                            onClick={() => setSplitFileId(null)}
-                            className="rounded px-1.5 py-0.5 text-[10px]"
-                            style={{ color: colorScheme.textMuted }}
-                            title="Close split"
-                          >
-                            Close split
-                          </button>
-                        </div>
-                        <CodeEditor
-                          fileIdOverride={splitFileId}
-                          onExternalFileDrop={replaceSecondaryPaneFile}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <CodeEditor />
-                  )}
-
-                  {dropEdge && (
-                    <div className="pointer-events-none absolute inset-0 z-30 p-2">
-                      <div
-                        className="relative h-full w-full rounded border-2 border-dashed p-1.5"
-                        style={{ borderColor: colorScheme.accent }}
-                      >
-                        <div
-                          className="absolute inset-y-1.5 left-1.5 flex w-[22%] items-center justify-center rounded text-[11px] font-medium"
-                          style={{
-                            color: colorScheme.text,
-                            backgroundColor:
-                              dropEdge === "left"
-                                ? `${colorScheme.accent}33`
-                                : `${colorScheme.panel}cc`,
-                            border: `1px solid ${
-                              dropEdge === "left"
-                                ? colorScheme.accent
-                                : colorScheme.border
-                            }`,
-                          }}
-                        >
-                          Left
-                        </div>
-                        <div
-                          className="absolute inset-y-1.5 right-1.5 flex w-[22%] items-center justify-center rounded text-[11px] font-medium"
-                          style={{
-                            color: colorScheme.text,
-                            backgroundColor:
-                              dropEdge === "right"
-                                ? `${colorScheme.accent}33`
-                                : `${colorScheme.panel}cc`,
-                            border: `1px solid ${
-                              dropEdge === "right"
-                                ? colorScheme.accent
-                                : colorScheme.border
-                            }`,
-                          }}
-                        >
-                          Right
-                        </div>
-                        <div
-                          className="absolute inset-x-[24%] top-1.5 flex h-[22%] items-center justify-center rounded text-[11px] font-medium"
-                          style={{
-                            color: colorScheme.text,
-                            backgroundColor:
-                              dropEdge === "top"
-                                ? `${colorScheme.accent}33`
-                                : `${colorScheme.panel}cc`,
-                            border: `1px solid ${
-                              dropEdge === "top"
-                                ? colorScheme.accent
-                                : colorScheme.border
-                            }`,
-                          }}
-                        >
-                          Top
-                        </div>
-                        <div
-                          className="absolute inset-x-[24%] bottom-1.5 flex h-[22%] items-center justify-center rounded text-[11px] font-medium"
-                          style={{
-                            color: colorScheme.text,
-                            backgroundColor:
-                              dropEdge === "bottom"
-                                ? `${colorScheme.accent}33`
-                                : `${colorScheme.panel}cc`,
-                            border: `1px solid ${
-                              dropEdge === "bottom"
-                                ? colorScheme.accent
-                                : colorScheme.border
-                            }`,
-                          }}
-                        >
-                          Bottom
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </ResizablePanel>
-
-              <ResizablePanel className="h-full">
-                <RegistersPanel />
-              </ResizablePanel>
-            </Resizable>
-          </ResizablePanel>
-
-          <ResizablePanel className="h-full">
-            <MemoryPanel />
-          </ResizablePanel>
-        </Resizable>
-      </div>
-
-      <div className="flex flex-1 flex-col gap-2 overflow-hidden md:hidden">
-        <div className="flex-1 overflow-hidden">
-          <CodeEditor />
+      {workspaceMode === "circuit" ? (
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <CircuitDesigner />
+          <ThemeModal
+            isOpen={showCircuitSettings}
+            onClose={() => setShowCircuitSettings(false)}
+          />
         </div>
-      </div>
+      ) : (
+        <div className="hidden flex-1 overflow-hidden md:flex">
+          <Resizable
+            direction="vertical"
+            defaultSizes={[75, 25]}
+            minSizes={[30, 15]}
+            maxSizes={[90, 70]}
+          >
+            <ResizablePanel className="h-full">
+              <Resizable
+                direction="horizontal"
+                defaultSizes={[18, 60, 22]}
+                minSizes={[10, 30, 15]}
+                maxSizes={[30, 80, 35]}
+              >
+                <ResizablePanel className="h-full">
+                  <Sidebar />
+                </ResizablePanel>
+
+                <ResizablePanel className="h-full">
+                  <div
+                    ref={splitContainerRef}
+                    className="relative h-full overflow-hidden"
+                    onDragOver={handleEditorDragOver}
+                    onDrop={handleEditorDrop}
+                    onDragLeave={(e) => {
+                      if (e.currentTarget === e.target) {
+                        setDropEdge(null);
+                      }
+                    }}
+                  >
+                    {splitFileId ? (
+                      <div
+                        className={`flex h-full w-full transition-all duration-200 ${splitDirection === "vertical" ? "flex-row" : "flex-col"}`}
+                      >
+                        <div
+                          className={`transition-all duration-200 ${splitDirection === "vertical" ? "h-full border-r" : "w-full border-b"}`}
+                          style={{
+                            borderColor: colorScheme.border,
+                            width:
+                              splitDirection === "vertical"
+                                ? `${splitRatio}%`
+                                : undefined,
+                            height:
+                              splitDirection === "horizontal"
+                                ? `${splitRatio}%`
+                                : undefined,
+                          }}
+                        >
+                          <CodeEditor
+                            fileIdOverride={activeFileId ?? undefined}
+                            onExternalFileDrop={replacePrimaryPaneFile}
+                          />
+                        </div>
+
+                        <div
+                          onMouseDown={() => setIsDraggingSplit(true)}
+                          className={`z-20 shrink-0 transition-colors ${splitDirection === "vertical" ? "h-full w-px cursor-col-resize" : "h-px w-full cursor-row-resize"}`}
+                          style={{
+                            backgroundColor: isDraggingSplit
+                              ? colorScheme.accent
+                              : colorScheme.border,
+                          }}
+                        />
+
+                        <div className="relative min-h-0 min-w-0 flex-1 transition-all duration-200">
+                          <div
+                            className="absolute top-2 right-2 z-20 flex items-center gap-1 rounded px-1 py-1"
+                            style={{
+                              backgroundColor: colorScheme.panel,
+                              border: `1px solid ${colorScheme.border}`,
+                            }}
+                          >
+                            <button
+                              onClick={() =>
+                                setSplitDirection((prev) =>
+                                  prev === "vertical"
+                                    ? "horizontal"
+                                    : "vertical",
+                                )
+                              }
+                              className="rounded px-1.5 py-0.5 text-[10px]"
+                              style={{ color: colorScheme.textMuted }}
+                              title="Toggle split direction"
+                            >
+                              {splitDirection === "vertical" ? "↕" : "↔"}
+                            </button>
+                            <button
+                              onClick={() => setSplitFileId(null)}
+                              className="rounded px-1.5 py-0.5 text-[10px]"
+                              style={{ color: colorScheme.textMuted }}
+                              title="Close split"
+                            >
+                              Close split
+                            </button>
+                          </div>
+                          <CodeEditor
+                            fileIdOverride={splitFileId}
+                            onExternalFileDrop={replaceSecondaryPaneFile}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <CodeEditor />
+                    )}
+
+                    {dropEdge && (
+                      <div className="pointer-events-none absolute inset-0 z-30 p-2">
+                        <div
+                          className="relative h-full w-full rounded border-2 border-dashed p-1.5"
+                          style={{ borderColor: colorScheme.accent }}
+                        >
+                          <div
+                            className="absolute inset-y-1.5 left-1.5 flex w-[22%] items-center justify-center rounded text-[11px] font-medium"
+                            style={{
+                              color: colorScheme.text,
+                              backgroundColor:
+                                dropEdge === "left"
+                                  ? `${colorScheme.accent}33`
+                                  : `${colorScheme.panel}cc`,
+                              border: `1px solid ${
+                                dropEdge === "left"
+                                  ? colorScheme.accent
+                                  : colorScheme.border
+                              }`,
+                            }}
+                          >
+                            Left
+                          </div>
+                          <div
+                            className="absolute inset-y-1.5 right-1.5 flex w-[22%] items-center justify-center rounded text-[11px] font-medium"
+                            style={{
+                              color: colorScheme.text,
+                              backgroundColor:
+                                dropEdge === "right"
+                                  ? `${colorScheme.accent}33`
+                                  : `${colorScheme.panel}cc`,
+                              border: `1px solid ${
+                                dropEdge === "right"
+                                  ? colorScheme.accent
+                                  : colorScheme.border
+                              }`,
+                            }}
+                          >
+                            Right
+                          </div>
+                          <div
+                            className="absolute inset-x-[24%] top-1.5 flex h-[22%] items-center justify-center rounded text-[11px] font-medium"
+                            style={{
+                              color: colorScheme.text,
+                              backgroundColor:
+                                dropEdge === "top"
+                                  ? `${colorScheme.accent}33`
+                                  : `${colorScheme.panel}cc`,
+                              border: `1px solid ${
+                                dropEdge === "top"
+                                  ? colorScheme.accent
+                                  : colorScheme.border
+                              }`,
+                            }}
+                          >
+                            Top
+                          </div>
+                          <div
+                            className="absolute inset-x-[24%] bottom-1.5 flex h-[22%] items-center justify-center rounded text-[11px] font-medium"
+                            style={{
+                              color: colorScheme.text,
+                              backgroundColor:
+                                dropEdge === "bottom"
+                                  ? `${colorScheme.accent}33`
+                                  : `${colorScheme.panel}cc`,
+                              border: `1px solid ${
+                                dropEdge === "bottom"
+                                  ? colorScheme.accent
+                                  : colorScheme.border
+                              }`,
+                            }}
+                          >
+                            Bottom
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </ResizablePanel>
+
+                <ResizablePanel className="h-full">
+                  <RegistersPanel />
+                </ResizablePanel>
+              </Resizable>
+            </ResizablePanel>
+
+            <ResizablePanel className="h-full">
+              <MemoryPanel />
+            </ResizablePanel>
+          </Resizable>
+        </div>
+      )}
+
+      {workspaceMode === "assembly" && (
+        <div className="flex flex-1 flex-col gap-2 overflow-hidden md:hidden">
+          <div className="flex-1 overflow-hidden">
+            <CodeEditor />
+          </div>
+        </div>
+      )}
 
       <AnimatePresence>
         {sidebarOpen && (
@@ -428,7 +530,7 @@ export function Editor() {
               onClick={() => setMobilePanelOpen(false)}
             />
             <motion.div
-              className="fixed inset-x-0 bottom-0 z-50 h-[70vh] rounded-t-xl p-3 md:hidden"
+              className="fixed inset-x-0 bottom-0 z-50 flex h-[70vh] flex-col rounded-t-xl p-3 md:hidden"
               style={{ backgroundColor: colorScheme.panel }}
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
@@ -479,7 +581,37 @@ export function Editor() {
                 </button>
               </div>
 
-              <div className="h-[calc(100%-48px)] overflow-hidden">
+              <div
+                className="mb-3 flex items-center gap-2 rounded border px-2 py-2"
+                style={{ borderColor: colorScheme.border }}
+              >
+                <span
+                  className="text-xs"
+                  style={{ color: colorScheme.textMuted }}
+                >
+                  Delay
+                </span>
+                <input
+                  type="range"
+                  min="1"
+                  max="5000"
+                  step="50"
+                  value={execution.delay}
+                  onChange={(e) => setDelay(Number(e.target.value))}
+                  className="flex-1 accent-current"
+                  style={{ accentColor: colorScheme.accent }}
+                />
+                <span
+                  className="w-12 text-right text-xs"
+                  style={{ color: colorScheme.textMuted }}
+                >
+                  {execution.delay >= 1000
+                    ? `${(execution.delay / 1000).toFixed(1)}s`
+                    : `${execution.delay}ms`}
+                </span>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-hidden">
                 {activeMobilePanel === "registers" && <RegistersPanel />}
                 {activeMobilePanel === "memory" && <MemoryPanel />}
               </div>

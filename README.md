@@ -77,6 +77,20 @@
 
 ---
 
+## Circuit Designer mode (beta, but already kinda spicy)
+
+I also made a proper visual circuit designer mode now. Think modern Logisim-ish
+vibes inside Mano Forge: drag components, wire them, simulate logic, make custom
+circuits, then reuse those circuits like components.
+
+It is currently in beta, so please check it out, make cursed circuits, and report
+bugs if something acts sus. The more weird cases you throw at it, the better it
+gets hehe.
+
+<img src="./public/docs/designer-demo.png" width="100%" />
+
+---
+
 ## Theme drip and font swag
 
 Not just options. Full wardrobe change.

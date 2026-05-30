@@ -9,6 +9,7 @@
     "dev": "next dev --turbo",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx}\" --cache",
     "format:write": "prettier --write \"**/*.{ts,tsx,js,jsx,mdx}\" --cache",
+    "test:circuit": "bun src/lib/circuit/simulator.test.ts && bun src/components/circuit/circuit-routing.test.ts",
     "test:parser": "bun src/lib/parser.ts",
     "lint": "next lint",
     "lint:fix": "next lint --fix",
