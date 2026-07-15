@@ -7,6 +7,12 @@ import { useUiStore, editorFontStacks } from "@/stores/ui-store";
 import { Parser } from "@/lib/parser";
 import { tokenize } from "@/lib/tokenizer";
 import {
+  I8085_DIRECTIVES,
+  I8085_INSTRUCTIONS,
+} from "@/lib/8085/instruction-set";
+import { I8085Assembler } from "@/lib/8085/assembler";
+import type { Architecture } from "@/lib/architectures";
+import {
   VscFile,
   VscClose,
   VscLightbulb,
@@ -78,6 +84,8 @@ function highlightLine(
     comment: string;
     directive: string;
   },
+  instructions: readonly string[],
+  directives: readonly string[],
 ): React.ReactNode[] {
   const result: React.ReactNode[] = [];
 
@@ -111,13 +119,13 @@ function highlightLine(
 
     if (!token || whitespaceRegex.exec(token) || token === ",") {
       result.push(<span key={idx++}>{token}</span>);
-    } else if (INSTRUCTIONS.includes(upperToken)) {
+    } else if (instructions.includes(upperToken)) {
       result.push(
         <span key={idx++} style={{ color: syntax.instruction }}>
           {token}
         </span>,
       );
-    } else if (DIRECTIVES.includes(upperToken)) {
+    } else if (directives.includes(upperToken)) {
       result.push(
         <span key={idx++} style={{ color: syntax.directive }}>
           {token}
@@ -176,7 +184,7 @@ interface CodeEditorProps {
   onExternalFileDrop?: (fileId: string) => void;
 }
 
-function formatAssemblyCode(code: string): string {
+function formatAssemblyCode(code: string, architecture: Architecture): string {
   const lines = code.split("\n");
   const formatted: string[] = [];
 
@@ -195,9 +203,13 @@ function formatAssemblyCode(code: string): string {
       commentPart = " " + trimmed.slice(commentIdx);
     }
 
-    const labelMatch = /^(\w+),\s*(.*)$/.exec(codePart);
+    const labelMatch =
+      architecture === "8085"
+        ? /^(\w+):\s*(.*)$/.exec(codePart)
+        : /^(\w+),\s*(.*)$/.exec(codePart);
     if (labelMatch) {
-      const label = labelMatch[1] + ",";
+      const label =
+        labelMatch[1] + (architecture === "8085" ? ":" : ",");
       const rest = labelMatch[2] ?? "";
       const labelPadded = label.padEnd(LABEL_COLUMN);
       const restPadded = rest ? rest : "";
@@ -223,6 +235,7 @@ function CodeEditorInner({
     reorderOpenFiles,
     updateFileContent,
     execution,
+    architecture,
   } = useFileStore();
   const { colorScheme } = useThemeStore();
   const {
@@ -263,20 +276,37 @@ function CodeEditorInner({
   const activeFileId = fileIdOverride ?? storeActiveFileId;
   const activeFile = files?.find((f) => f.id === activeFileId);
   const content = activeFile?.content ?? "";
-  const lines = content.split("\n");
+  const lines = React.useMemo(() => content.split("\n"), [content]);
+  const instructions: readonly string[] =
+    architecture === "8085" ? I8085_INSTRUCTIONS : INSTRUCTIONS;
+  const directives: readonly string[] =
+    architecture === "8085" ? I8085_DIRECTIVES : DIRECTIVES;
 
   const labels = React.useMemo(() => {
     const found: string[] = [];
     for (const line of lines) {
-      const match = /^(\w+),/.exec(line.trim());
+      const match =
+        architecture === "8085"
+          ? /^(\w+):/.exec(line.trim())
+          : /^(\w+),/.exec(line.trim());
       if (match?.[1]) {
         found.push(match[1]);
       }
     }
     return found;
-  }, [lines]);
+  }, [architecture, lines]);
 
   const labelDiagnostics = React.useMemo(() => {
+    if (architecture === "8085") {
+      return {
+        unused: [] as string[],
+        undeclared: [] as string[],
+        lineIssues: {} as Record<
+          number,
+          { severity: "warning" | "error"; message: string }
+        >,
+      };
+    }
     const declared = new Map<string, number>();
     const used = new Map<string, number[]>();
     const memoryRef = new Set([
@@ -347,7 +377,7 @@ function CodeEditorInner({
     }
 
     return { unused, undeclared, lineIssues };
-  }, [lines]);
+  }, [architecture, lines]);
 
   const lineHeight = Math.round(editorFontSize * 1.5);
   const errorCount = (liveError ? 1 : 0) + labelDiagnostics.undeclared.length;
@@ -415,8 +445,14 @@ function CodeEditorInner({
       }
 
       try {
-        const parser = new Parser(tokenize(content), content, { silent: true });
-        parser.parse();
+        if (architecture === "8085") {
+          new I8085Assembler(content).assemble();
+        } else {
+          const parser = new Parser(tokenize(content), content, {
+            silent: true,
+          });
+          parser.parse();
+        }
         setLiveError(null);
       } catch (err) {
         const maybe = err as {
@@ -440,7 +476,7 @@ function CodeEditorInner({
     }, 180);
 
     return () => clearTimeout(timer);
-  }, [content]);
+  }, [architecture, content]);
 
   React.useEffect(() => {
     const textarea = textareaRef.current;
@@ -463,12 +499,12 @@ function CodeEditorInner({
       const upper = word.toUpperCase();
       const results: Suggestion[] = [];
 
-      for (const instr of INSTRUCTIONS) {
+      for (const instr of instructions) {
         if (instr.startsWith(upper)) {
           results.push({ text: instr, type: "instruction" });
         }
       }
-      for (const dir of DIRECTIVES) {
+      for (const dir of directives) {
         if (dir.startsWith(upper)) {
           results.push({ text: dir, type: "directive" });
         }
@@ -487,7 +523,7 @@ function CodeEditorInner({
 
       return results.slice(0, 8);
     },
-    [labels],
+    [directives, instructions, labels],
   );
 
   const suggestionsRef = React.useRef<Suggestion[]>([]);
@@ -529,11 +565,11 @@ function CodeEditorInner({
           setSelectedIndex(0);
           return;
         }
-        newSuggestions = [...INSTRUCTIONS, ...DIRECTIVES]
+        newSuggestions = [...instructions, ...directives]
           .slice(0, 8)
           .map((t) => ({
             text: t,
-            type: INSTRUCTIONS.includes(t)
+            type: instructions.includes(t)
               ? ("instruction" as const)
               : ("directive" as const),
           }));
@@ -644,7 +680,7 @@ function CodeEditorInner({
         placeAbove,
       });
     },
-    [getSuggestions, lineHeight],
+    [directives, getSuggestions, instructions, lineHeight],
   );
 
   const scheduleSuggestionRefresh = React.useCallback(
@@ -757,7 +793,7 @@ function CodeEditorInner({
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "F") {
       e.preventDefault();
       if (activeFileId) {
-        const formatted = formatAssemblyCode(val);
+        const formatted = formatAssemblyCode(val, architecture);
         updateFileContent(activeFileId, formatted);
       }
       return;
@@ -1217,7 +1253,12 @@ function CodeEditorInner({
                   liveError?.line === i + 1 ? liveError.message : undefined
                 }
               >
-                {highlightLine(line, colorScheme.syntax)}
+                {highlightLine(
+                  line,
+                  colorScheme.syntax,
+                  instructions,
+                  directives,
+                )}
                 {"\n"}
               </div>
             ))}
@@ -1254,7 +1295,11 @@ function CodeEditorInner({
               overflowWrap: "anywhere",
               fontFamily: monoFontFamily,
             }}
-            placeholder="Start typing your Mano assembly code..."
+            placeholder={
+              architecture === "8085"
+                ? "Start typing your Intel 8085 assembly code..."
+                : "Start typing your Mano assembly code..."
+            }
           />
 
           <span

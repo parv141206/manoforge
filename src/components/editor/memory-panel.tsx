@@ -10,7 +10,7 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 const ROWS_PER_PAGE = 16;
 
 function MemoryPanelInner() {
-  const { memory, execution, registers } = useFileStore();
+  const { memory, execution, registers, architecture } = useFileStore();
   const { colorScheme } = useThemeStore();
   const { layoutMode } = useUiStore();
   const [search, setSearch] = useState("");
@@ -38,7 +38,11 @@ function MemoryPanelInner() {
     return () => window.removeEventListener("resize", updateLayout);
   }, []);
 
-  const totalPages = Math.ceil(4096 / (ROWS_PER_PAGE * cols));
+  const memorySize = architecture === "8085" ? 65536 : 4096;
+  const valueDigits = architecture === "8085" ? 2 : 4;
+  const valueBits = architecture === "8085" ? 8 : 16;
+  const addressDigits = architecture === "8085" ? 4 : 3;
+  const totalPages = Math.ceil(memorySize / (ROWS_PER_PAGE * cols));
 
   const searchAddress = useMemo(() => {
     if (!search) return null;
@@ -47,11 +51,15 @@ function MemoryPanelInner() {
   }, [search, addressMode]);
 
   const displayPage = useMemo(() => {
-    if (searchAddress !== null && searchAddress >= 0 && searchAddress < 4096) {
+    if (
+      searchAddress !== null &&
+      searchAddress >= 0 &&
+      searchAddress < memorySize
+    ) {
       return Math.floor(searchAddress / (ROWS_PER_PAGE * cols));
     }
     return page;
-  }, [searchAddress, page, cols]);
+  }, [searchAddress, page, cols, memorySize]);
 
   const startAddr = displayPage * ROWS_PER_PAGE * cols;
 
@@ -92,8 +100,8 @@ function MemoryPanelInner() {
 
   const formatAddress = (addr: number) =>
     addressMode === "HEX"
-      ? addr.toString(16).toUpperCase().padStart(3, "0")
-      : addr.toString(10).padStart(4, "0");
+      ? addr.toString(16).toUpperCase().padStart(addressDigits, "0")
+      : addr.toString(10).padStart(architecture === "8085" ? 5 : 4, "0");
 
   const formatColumnOffset = (offset: number) =>
     addressMode === "HEX"
@@ -127,7 +135,7 @@ function MemoryPanelInner() {
           >
             {formatAddress(startAddr)} -{" "}
             {formatAddress(
-              Math.min(startAddr + ROWS_PER_PAGE * cols - 1, 4095),
+              Math.min(startAddr + ROWS_PER_PAGE * cols - 1, memorySize - 1),
             )}
           </span>
           <button
@@ -182,7 +190,7 @@ function MemoryPanelInner() {
           <tbody>
             {Array.from({ length: ROWS_PER_PAGE }, (_, row) => {
               const rowStart = startAddr + row * cols;
-              if (rowStart >= 4096) return null;
+              if (rowStart >= memorySize) return null;
 
               return (
                 <tr key={row}>
@@ -194,7 +202,7 @@ function MemoryPanelInner() {
                   </td>
                   {Array.from({ length: cols }, (_, col) => {
                     const addr = rowStart + col;
-                    if (addr >= 4096) return <td key={col} />;
+                    if (addr >= memorySize) return <td key={col} />;
 
                     const value = memory[addr] ?? 0;
                     const isHighlighted = searchAddress === addr;
@@ -224,10 +232,13 @@ function MemoryPanelInner() {
                         title={
                           hasInfo
                             ? `${formatAddress(addr)}: ${info?.label ? info.label + " - " : ""}${info?.instruction ?? ""}`
-                            : `${formatAddress(addr)}: ${value.toString(16).toUpperCase().padStart(4, "0")}`
+                            : `${formatAddress(addr)}: ${value.toString(16).toUpperCase().padStart(valueDigits, "0")}`
                         }
                       >
-                        {value.toString(16).toUpperCase().padStart(4, "0")}
+                        {value
+                          .toString(16)
+                          .toUpperCase()
+                          .padStart(valueDigits, "0")}
                       </td>
                     );
                   })}
@@ -330,9 +341,9 @@ function MemoryPanelInner() {
                   const hexValue = value
                     .toString(16)
                     .toUpperCase()
-                    .padStart(4, "0");
+                    .padStart(valueDigits, "0");
                   const decValue = value.toString(10);
-                  const binValue = value.toString(2).padStart(16, "0");
+                  const binValue = value.toString(2).padStart(valueBits, "0");
                   const info = addressInfo?.[addr];
                   const isPC = registers.PC === addr;
                   const isHighlighted = searchAddress === addr;

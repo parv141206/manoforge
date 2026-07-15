@@ -33,6 +33,7 @@ function SidebarInner() {
     deleteFiles,
     downloadFile,
     downloadFiles,
+    architecture,
   } = useFileStore();
   const { colorScheme } = useThemeStore();
   const { layoutMode } = useUiStore();
@@ -98,7 +99,8 @@ function SidebarInner() {
     try {
       const zip = await JSZip.loadAsync(file);
       const asmEntries = Object.values(zip.files).filter(
-        (entry) => !entry.dir && entry.name.toLowerCase().endsWith(".asm"),
+        (entry) =>
+          !entry.dir && /\.(asm|a85)$/i.test(entry.name.toLowerCase()),
       );
 
       const importedFiles: { name: string; content: string }[] = [];
@@ -283,7 +285,9 @@ function SidebarInner() {
                       setNewFileName("");
                     }
                   }}
-                  placeholder="filename.asm"
+                  placeholder={
+                    architecture === "8085" ? "filename.a85" : "filename.asm"
+                  }
                   className="flex-1 rounded bg-transparent px-1 text-sm outline-none"
                   style={{
                     color: colorScheme.text,

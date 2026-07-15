@@ -19,6 +19,8 @@ import { ThemeModal } from "./theme-modal";
 import { Parser } from "@/lib/parser";
 import { Assembler } from "@/lib/assembler";
 import { tokenize } from "@/lib/tokenizer";
+import { I8085Assembler } from "@/lib/8085/assembler";
+import { step8085, type I8085Registers } from "@/lib/8085/cpu";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -33,6 +35,7 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
   const {
     files,
     activeFileId,
+    architecture,
     execution,
     setDelay,
     setRunning,
@@ -42,10 +45,13 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
     setAddressToLine,
     setAddressInfo,
     setMemoryWord,
+    setMemoryBulk,
+    setPort,
     setRegister,
     addNotation,
     clearNotations,
     resetExecution,
+    setArchitecture,
   } = useFileStore();
 
   const { colorScheme } = useThemeStore();
@@ -98,6 +104,40 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
 
     try {
       clearNotations();
+      if (architecture === "8085") {
+        const assembler = new I8085Assembler(activeFile.content);
+        const bytes = assembler.assemble();
+        const addressToLineRecord: Record<number, number> = {};
+        assembler.addressToLine.forEach((line, address) => {
+          addressToLineRecord[address] = line;
+        });
+        const addressInfoRecord: Record<
+          number,
+          { label?: string; instruction?: string }
+        > = {};
+        assembler.addressInfo.forEach((info, address) => {
+          addressInfoRecord[address] = info;
+        });
+        setAddressToLine(addressToLineRecord);
+        setAddressInfo(addressInfoRecord);
+        setMemoryBulk(
+          [...assembler.addressToCode].map(([address, value]) => ({
+            address,
+            value,
+          })),
+        );
+        setMachineCode(
+          [...assembler.addressToCode].map(
+            ([address, value]) =>
+              `${address.toString(16).toUpperCase().padStart(4, "0")}: ${value.toString(16).toUpperCase().padStart(2, "0")}`,
+          ),
+        );
+        setAssembled(true);
+        setRegister("PC", assembler.startAddress);
+        setCurrentLine(null);
+        addNotation(`Assembled successfully: ${bytes.length} bytes`);
+        return;
+      }
       const tokens = tokenize(activeFile.content);
       const parser = new Parser(tokens, activeFile.content);
       const ast = parser.parse();
@@ -202,6 +242,42 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
     try {
       const state = useFileStore.getState();
       const pc = state.registers.PC;
+
+      if (state.architecture === "8085") {
+        setCurrentLine(pc);
+        const result = step8085(
+          state.registers as I8085Registers,
+          state.memory,
+          state.ports,
+        );
+        for (const key of Object.keys(
+          result.registers,
+        ) as (keyof I8085Registers)[]) {
+          setRegister(
+            key as keyof typeof state.registers,
+            result.registers[key],
+          );
+        }
+        setMemoryBulk(result.memoryWrites);
+        for (const write of result.portWrites) {
+          setPort(write.port, write.value);
+        }
+        const messages = detailedMode
+          ? result.notations
+          : [
+              `${result.instruction} => PC=${toHex(result.registers.PC, 4)}, A=${toHex(result.registers.A, 2)}`,
+            ];
+        for (const message of messages) {
+          if (!(await noteInstruction(message))) return false;
+        }
+        if (detailedMode) addNotation("────────────────────");
+        if (result.halted) {
+          setRunning(false);
+          addNotation("HLT: Execution halted");
+          return false;
+        }
+        return true;
+      }
 
       if (pc >= 4096) {
         addNotation("Error: PC out of bounds");
@@ -616,6 +692,48 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
             <span>Circuit Designer</span>
           </div>
         )}
+        {workspaceMode === "assembly" && (
+          <div
+            className="flex items-center gap-1 rounded border p-1"
+            style={{
+              backgroundColor: colorScheme.panel,
+              borderColor: colorScheme.border,
+            }}
+          >
+            <button
+              onClick={() => setArchitecture("mano")}
+              className="rounded px-2 py-1 text-xs font-medium transition-colors"
+              style={{
+                backgroundColor:
+                  architecture === "mano"
+                    ? colorScheme.active
+                    : "transparent",
+                color:
+                  architecture === "mano"
+                    ? colorScheme.text
+                    : colorScheme.textMuted,
+              }}
+            >
+              Mano
+            </button>
+            <button
+              onClick={() => setArchitecture("8085")}
+              className="rounded px-2 py-1 text-xs font-medium transition-colors"
+              style={{
+                backgroundColor:
+                  architecture === "8085"
+                    ? colorScheme.active
+                    : "transparent",
+                color:
+                  architecture === "8085"
+                    ? colorScheme.text
+                    : colorScheme.textMuted,
+              }}
+            >
+              8085
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">
@@ -744,6 +862,7 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
       <DocsModal
         isOpen={showDocsModal}
         onClose={() => setShowDocsModal(false)}
+        architecture={architecture}
       />
       <ThemeModal
         isOpen={showThemeModal}

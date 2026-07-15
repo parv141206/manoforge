@@ -2,6 +2,12 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import {
+  architectureForFile,
+  extensionForArchitecture,
+  memorySizeForArchitecture,
+  type Architecture,
+} from "@/lib/architectures";
 
 export interface FileItem {
   id: string;
@@ -42,13 +48,32 @@ export interface Registers {
   FGI: number;
   FGO: number;
   R: number;
+  A: number;
+  B: number;
+  C: number;
+  D: number;
+  E8: number;
+  H: number;
+  L: number;
+  SP: number;
+  FS: number;
+  FZ: number;
+  FAC: number;
+  FP: number;
+  FCY: number;
+  IE: number;
+  IM: number;
+  SID: number;
+  SOD: number;
 }
 
 export interface FileStore {
+  architecture: Architecture;
   files: FileItem[];
   activeFileId: string | null;
   openFileIds: string[];
   memory: number[];
+  ports: number[];
   registers: Registers;
   execution: ExecutionState;
 
@@ -82,6 +107,8 @@ export interface FileStore {
   resetMemory: () => void;
 
   resetExecution: () => void;
+  setArchitecture: (architecture: Architecture) => void;
+  setPort: (port: number, value: number) => void;
 }
 
 const defaultRegisters: Registers = {
@@ -101,6 +128,23 @@ const defaultRegisters: Registers = {
   FGI: 0,
   FGO: 0,
   R: 0,
+  A: 0,
+  B: 0,
+  C: 0,
+  D: 0,
+  E8: 0,
+  H: 0,
+  L: 0,
+  SP: 0xffff,
+  FS: 0,
+  FZ: 0,
+  FAC: 0,
+  FP: 0,
+  FCY: 0,
+  IE: 0,
+  IM: 0,
+  SID: 0,
+  SOD: 0,
 };
 
 const generateId = () => Math.random().toString(36).substring(2, 15);
@@ -108,6 +152,7 @@ const generateId = () => Math.random().toString(36).substring(2, 15);
 export const useFileStore = create<FileStore>()(
   persist(
     (set, get) => ({
+      architecture: "mano",
       files: [
         {
           id: "default-file",
@@ -119,6 +164,7 @@ export const useFileStore = create<FileStore>()(
       activeFileId: "default-file",
       openFileIds: ["default-file"],
       memory: new Array<number>(4096).fill(0),
+      ports: new Array<number>(256).fill(0),
       registers: { ...defaultRegisters },
       execution: {
         isRunning: false,
@@ -132,9 +178,10 @@ export const useFileStore = create<FileStore>()(
       },
 
       createFile: (name) => {
+        const extension = extensionForArchitecture(get().architecture);
         const newFile: FileItem = {
           id: generateId(),
-          name: name.endsWith(".asm") ? name : `${name}.asm`,
+          name: /\.(asm|a85)$/i.test(name) ? name : `${name}${extension}`,
           content: "",
         };
         set((state) => ({
@@ -148,6 +195,7 @@ export const useFileStore = create<FileStore>()(
             currentLine: null,
           },
         }));
+        get().setActiveFile(newFile.id);
       },
 
       deleteFile: (id) => {
@@ -179,6 +227,9 @@ export const useFileStore = create<FileStore>()(
             f.id === id ? { ...f, name: newName } : f,
           ),
         }));
+        if (get().activeFileId === id) {
+          get().setActiveFile(id);
+        }
       },
 
       updateFileContent: (id, content) => {
@@ -193,17 +244,45 @@ export const useFileStore = create<FileStore>()(
       },
 
       setActiveFile: (id) => {
-        set((state) => ({
-          activeFileId: id,
-          openFileIds:
-            id && !state.openFileIds.includes(id)
-              ? [...state.openFileIds, id]
-              : state.openFileIds,
-          execution: {
-            ...state.execution,
-            currentLine: null,
-          },
-        }));
+        set((state) => {
+          const architecture = architectureForFile(
+            state.files.find((file) => file.id === id)?.name ?? "main.asm",
+          );
+          const changed = architecture !== state.architecture;
+          return {
+            activeFileId: id,
+            architecture,
+            openFileIds:
+              id && !state.openFileIds.includes(id)
+                ? [...state.openFileIds, id]
+                : state.openFileIds,
+            registers: changed ? { ...defaultRegisters } : state.registers,
+            memory: changed
+              ? new Array<number>(
+                  memorySizeForArchitecture(architecture),
+                ).fill(0)
+              : state.memory,
+            ports: changed
+              ? new Array<number>(256).fill(0)
+              : state.ports,
+            execution: changed
+              ? {
+                  isRunning: false,
+                  isAssembled: false,
+                  currentLine: null,
+                  delay: state.execution.delay,
+                  notations: [],
+                  machineCode: [],
+                  addressToLine: {},
+                  addressInfo: {},
+                }
+              : {
+                  ...state.execution,
+                  currentLine: null,
+                },
+          };
+        });
+        get().setActiveFile(get().activeFileId);
       },
 
       closeOpenFile: (id) => {
@@ -227,6 +306,7 @@ export const useFileStore = create<FileStore>()(
             activeFileId: nextActive,
           };
         });
+        get().setActiveFile(get().activeFileId);
       },
 
       reorderOpenFiles: (draggedId, targetId) => {
@@ -274,9 +354,9 @@ export const useFileStore = create<FileStore>()(
         const created: FileItem[] = [];
 
         for (const item of incomingFiles) {
-          const baseName = item.name.endsWith(".asm")
+          const baseName = /\.(asm|a85)$/i.test(item.name)
             ? item.name
-            : `${item.name}.asm`;
+            : `${item.name}${extensionForArchitecture(get().architecture)}`;
           let finalName = baseName;
           let n = 1;
           while (existing.has(finalName.toLowerCase())) {
@@ -308,6 +388,9 @@ export const useFileStore = create<FileStore>()(
             currentLine: null,
           },
         }));
+        if (created[0]) {
+          get().setActiveFile(created[0].id);
+        }
       },
 
       deleteFiles: (ids) => {
@@ -333,6 +416,7 @@ export const useFileStore = create<FileStore>()(
                   : [],
           };
         });
+        get().setActiveFile(get().activeFileId);
       },
 
       setDelay: (delay) => {
@@ -399,7 +483,8 @@ export const useFileStore = create<FileStore>()(
       setMemoryWord: (address, value) => {
         set((state) => {
           const newMemory = [...state.memory];
-          newMemory[address] = value & 0xffff;
+          newMemory[address] =
+            value & (state.architecture === "8085" ? 0xff : 0xffff);
           return { memory: newMemory };
         });
       },
@@ -408,20 +493,28 @@ export const useFileStore = create<FileStore>()(
         set((state) => {
           const newMemory = [...state.memory];
           for (const { address, value } of data) {
-            newMemory[address] = value & 0xffff;
+            newMemory[address] =
+              value & (state.architecture === "8085" ? 0xff : 0xffff);
           }
           return { memory: newMemory };
         });
       },
 
       resetMemory: () => {
-        set({ memory: new Array<number>(4096).fill(0) });
+        set((state) => ({
+          memory: new Array<number>(
+            memorySizeForArchitecture(state.architecture),
+          ).fill(0),
+        }));
       },
 
       resetExecution: () => {
         set({
           registers: { ...defaultRegisters },
-          memory: new Array<number>(4096).fill(0),
+          memory: new Array<number>(
+            memorySizeForArchitecture(get().architecture),
+          ).fill(0),
+          ports: new Array<number>(256).fill(0),
           execution: {
             isRunning: false,
             isAssembled: false,
@@ -434,6 +527,36 @@ export const useFileStore = create<FileStore>()(
           },
         });
       },
+
+      setArchitecture: (architecture) => {
+        if (architecture === get().architecture) return;
+        set({
+          architecture,
+          registers: { ...defaultRegisters },
+          memory: new Array<number>(
+            memorySizeForArchitecture(architecture),
+          ).fill(0),
+          ports: new Array<number>(256).fill(0),
+          execution: {
+            isRunning: false,
+            isAssembled: false,
+            currentLine: null,
+            delay: get().execution.delay,
+            notations: [],
+            machineCode: [],
+            addressToLine: {},
+            addressInfo: {},
+          },
+        });
+      },
+
+      setPort: (port, value) => {
+        set((state) => {
+          const ports = [...state.ports];
+          ports[port & 0xff] = value & 0xff;
+          return { ports };
+        });
+      },
     }),
     {
       name: "mano-forge-storage",
@@ -441,6 +564,7 @@ export const useFileStore = create<FileStore>()(
         files: state.files,
         activeFileId: state.activeFileId,
         openFileIds: state.openFileIds,
+        architecture: state.architecture,
         execution: { delay: state.execution.delay },
       }),
       onRehydrateStorage: () => (state) => {
@@ -459,6 +583,15 @@ export const useFileStore = create<FileStore>()(
             state.activeFileId =
               state.openFileIds[0] ?? state.files[0]?.id ?? null;
           }
+          state.architecture = architectureForFile(
+            state.files.find((file) => file.id === state.activeFileId)?.name ??
+              "main.asm",
+          );
+          state.memory = new Array<number>(
+            memorySizeForArchitecture(state.architecture),
+          ).fill(0);
+          state.ports = new Array<number>(256).fill(0);
+          state.registers = { ...defaultRegisters };
         }
       },
     },

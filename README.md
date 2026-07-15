@@ -91,6 +91,32 @@ gets hehe.
 
 ---
 
+## Intel 8085 mode (the tiny legend has entered the forge)
+
+Mano Forge now speaks proper Intel 8085 too. Hit the **Mano / 8085** toggle in
+the navbar and the same workspace turns into a full 8-bit 8085 setup: assembler,
+64 KB byte-addressable memory, registers, flags, machine code, stepping, running,
+syntax colors, suggestions, and execution logs. Same drip, entirely different
+little silicon brain.
+
+Files know what they are without making you babysit a setting:
+
+- `.asm` opens as Morris Mano assembly
+- `.a85` opens as Intel 8085 assembly
+
+The assembler covers the official documented instruction set, Intel-style labels
+and hexadecimal constants, plus the everyday directives `ORG`, `DB`, `DW`, `DS`,
+`EQU`, `SET`, and `END`. The simulator includes register and memory operations,
+flags, jumps, calls, returns, the stack, I/O ports, and the 8085 control
+instructions. Yes, even `M` behaves correctly as memory through `HL`; it did not
+secretly become an eighth general-purpose register while nobody was looking.
+
+The quick reference lives behind the docs button in 8085 mode, and the
+[gloriously huge complete reference](./public/docs/intel_8085_complete_reference.md)
+is here when your lab manual decides to become emotionally unavailable.
+
+---
+
 ## Theme drip and font swag
 
 Not just options. Full wardrobe change.

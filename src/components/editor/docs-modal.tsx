@@ -4,10 +4,13 @@ import { motion, AnimatePresence } from "motion/react";
 import { useThemeStore } from "@/stores/theme-store";
 import { VscClose } from "react-icons/vsc";
 import { useState } from "react";
+import type { Architecture } from "@/lib/architectures";
+import { Docs8085 } from "./docs-8085";
 
 interface DocsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  architecture: Architecture;
 }
 
 type TabType = "memory" | "register" | "io";
@@ -179,9 +182,16 @@ const directives = [
   { mnemonic: "HEX", description: "Hexadecimal constant" },
 ];
 
-export function DocsModal({ isOpen, onClose }: DocsModalProps) {
+export function DocsModal({
+  isOpen,
+  onClose,
+  architecture,
+}: DocsModalProps) {
   const { colorScheme } = useThemeStore();
   const [activeTab, setActiveTab] = useState<TabType>("memory");
+  if (architecture === "8085") {
+    return <Docs8085 isOpen={isOpen} onClose={onClose} />;
+  }
 
   const tabs: { key: TabType; label: string }[] = [
     { key: "memory", label: "Memory Reference" },

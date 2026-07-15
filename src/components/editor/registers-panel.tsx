@@ -25,13 +25,13 @@ const formatValue = (value: number, mode: DisplayMode, bits = 16): string => {
 };
 
 function RegistersPanelInner() {
-  const { registers, execution } = useFileStore();
+  const { registers, execution, architecture } = useFileStore();
   const { colorScheme } = useThemeStore();
   const { layoutMode, executionLogMode } = useUiStore();
   const [displayMode, setDisplayMode] = useState<DisplayMode>("HEX");
   const [activeTab, setActiveTab] = useState<TabMode>("registers");
 
-  const mainRegisters: {
+  const manoMainRegisters: {
     name: string;
     key: keyof typeof registers;
     bits: number;
@@ -43,6 +43,24 @@ function RegistersPanelInner() {
     { name: "PC", key: "PC", bits: 12 },
     { name: "TR", key: "TR", bits: 16 },
   ];
+  const i8085MainRegisters: {
+    name: string;
+    key: keyof typeof registers;
+    bits: number;
+  }[] = [
+    { name: "A", key: "A", bits: 8 },
+    { name: "B", key: "B", bits: 8 },
+    { name: "C", key: "C", bits: 8 },
+    { name: "D", key: "D", bits: 8 },
+    { name: "E", key: "E8", bits: 8 },
+    { name: "H", key: "H", bits: 8 },
+    { name: "L", key: "L", bits: 8 },
+    { name: "IR", key: "IR", bits: 8 },
+    { name: "PC", key: "PC", bits: 16 },
+    { name: "SP", key: "SP", bits: 16 },
+  ];
+  const mainRegisters =
+    architecture === "8085" ? i8085MainRegisters : manoMainRegisters;
 
   const ioRegisters: {
     name: string;
@@ -54,12 +72,21 @@ function RegistersPanelInner() {
     // { name: "SC", key: "SC", bits: 3 },
   ];
 
-  const flags: { name: string; key: keyof typeof registers }[] = [
-    { name: "E", key: "E" },
-    // { name: "S", key: "S" },
-    // { name: "I", key: "I" },
-    // { name: "R", key: "R" },
-  ];
+  const flags: { name: string; key: keyof typeof registers }[] =
+    architecture === "8085"
+      ? [
+          { name: "S", key: "FS" },
+          { name: "Z", key: "FZ" },
+          { name: "AC", key: "FAC" },
+          { name: "P", key: "FP" },
+          { name: "CY", key: "FCY" },
+        ]
+      : [
+          { name: "E", key: "E" },
+          // { name: "S", key: "S" },
+          // { name: "I", key: "I" },
+          // { name: "R", key: "R" },
+        ];
 
   const ioFlags: { name: string; key: keyof typeof registers }[] = [
     // { name: "IEN", key: "IEN" },
@@ -193,7 +220,9 @@ function RegistersPanelInner() {
               ))}
             </div>
 
-            <div className="grid grid-cols-1 gap-1">
+            <div
+              className={`grid gap-1 ${architecture === "8085" ? "grid-cols-5" : "grid-cols-1"}`}
+            >
               {flags.map(({ name, key }) => (
                 <div
                   key={name}
