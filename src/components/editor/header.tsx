@@ -99,10 +99,11 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
     addNotation(`  | ${pointer}`);
   };
 
-  const handleAssemble = () => {
-    if (!activeFile) return;
+  const assembleActiveFile = () => {
+    if (!activeFile) return false;
 
     try {
+      resetExecution();
       clearNotations();
       if (architecture === "8085") {
         const assembler = new I8085Assembler(activeFile.content);
@@ -136,7 +137,7 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
         setRegister("PC", assembler.startAddress);
         setCurrentLine(null);
         addNotation(`Assembled successfully: ${bytes.length} bytes`);
-        return;
+        return true;
       }
       const tokens = tokenize(activeFile.content);
       const parser = new Parser(tokens, activeFile.content);
@@ -144,7 +145,7 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
 
       if (!ast || ast.length === 0) {
         addNotation("Error: No valid code to assemble");
-        return;
+        return false;
       }
 
       const assembler = new Assembler(ast);
@@ -184,10 +185,19 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
       setRegister("PC", assembler.startAddress);
       setCurrentLine(null);
       addNotation(`Assembled successfully: ${machineCodeStrings.length} words`);
+      return true;
     } catch (error) {
       emitAssembleError(error);
       setAssembled(false);
+      return false;
     }
+  };
+
+  const handleAssemble = () => {
+    stopRequestedRef.current = true;
+    isExecutingRef.current = false;
+    setRunning(false);
+    assembleActiveFile();
   };
 
   const toHex = (n: number, pad = 4) =>
@@ -585,13 +595,13 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
   };
 
   const handleRun = async () => {
-    if (!execution.isAssembled) return;
-
     if (execution.isRunning || isExecutingRef.current) {
       stopRequestedRef.current = true;
       setRunning(false);
       return;
     }
+
+    if (!assembleActiveFile()) return;
 
     stopRequestedRef.current = false;
     isExecutingRef.current = true;
@@ -705,9 +715,7 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
               className="rounded px-2 py-1 text-xs font-medium transition-colors"
               style={{
                 backgroundColor:
-                  architecture === "mano"
-                    ? colorScheme.active
-                    : "transparent",
+                  architecture === "mano" ? colorScheme.active : "transparent",
                 color:
                   architecture === "mano"
                     ? colorScheme.text
@@ -721,9 +729,7 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
               className="rounded px-2 py-1 text-xs font-medium transition-colors"
               style={{
                 backgroundColor:
-                  architecture === "8085"
-                    ? colorScheme.active
-                    : "transparent",
+                  architecture === "8085" ? colorScheme.active : "transparent",
                 color:
                   architecture === "8085"
                     ? colorScheme.text
@@ -779,7 +785,7 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
 
             <button
               onClick={handleRun}
-              disabled={!execution.isAssembled}
+              disabled={!activeFile}
               className="flex items-center gap-1 rounded p-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-40 sm:gap-1.5 sm:px-3 sm:py-1.5"
               style={{
                 backgroundColor: execution.isRunning ? "#ef4444" : "#22c55e",

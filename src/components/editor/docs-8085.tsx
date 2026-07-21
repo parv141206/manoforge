@@ -3,30 +3,118 @@
 import { AnimatePresence, motion } from "motion/react";
 import { VscClose, VscLinkExternal } from "react-icons/vsc";
 import { useThemeStore } from "@/stores/theme-store";
+import { I8085_INSTRUCTION_INFO } from "@/lib/8085/reference";
 
 const groups = [
   {
     name: "Data transfer",
-    instructions: "MOV MVI LXI LDA STA LHLD SHLD LDAX STAX XCHG",
+    instructions: [
+      "MOV",
+      "MVI",
+      "LXI",
+      "LDA",
+      "STA",
+      "LHLD",
+      "SHLD",
+      "LDAX",
+      "STAX",
+      "XCHG",
+    ],
   },
   {
     name: "Arithmetic",
-    instructions: "ADD ADC ADI ACI SUB SBB SUI SBI INR DCR INX DCX DAD DAA",
+    instructions: [
+      "ADD",
+      "ADC",
+      "ADI",
+      "ACI",
+      "SUB",
+      "SBB",
+      "SUI",
+      "SBI",
+      "INR",
+      "DCR",
+      "INX",
+      "DCX",
+      "DAD",
+      "DAA",
+    ],
   },
   {
     name: "Logical",
-    instructions: "ANA ANI XRA XRI ORA ORI CMP CPI RLC RRC RAL RAR CMA CMC STC",
+    instructions: [
+      "ANA",
+      "ANI",
+      "XRA",
+      "XRI",
+      "ORA",
+      "ORI",
+      "CMP",
+      "CPI",
+      "RLC",
+      "RRC",
+      "RAL",
+      "RAR",
+      "CMA",
+      "CMC",
+      "STC",
+    ],
   },
   {
     name: "Branch",
-    instructions:
-      "JMP JNZ JZ JNC JC JPO JPE JP JM CALL CNZ CZ CNC CC CPO CPE CP CM RET RNZ RZ RNC RC RPO RPE RP RM RST PCHL",
+    instructions: [
+      "JMP",
+      "JNZ",
+      "JZ",
+      "JNC",
+      "JC",
+      "JPO",
+      "JPE",
+      "JP",
+      "JM",
+      "CALL",
+      "CNZ",
+      "CZ",
+      "CNC",
+      "CC",
+      "CPO",
+      "CPE",
+      "CP",
+      "CM",
+      "RET",
+      "RNZ",
+      "RZ",
+      "RNC",
+      "RC",
+      "RPO",
+      "RPE",
+      "RP",
+      "RM",
+      "RST",
+      "PCHL",
+    ],
   },
   {
     name: "Stack, I/O & control",
-    instructions: "PUSH POP XTHL SPHL IN OUT EI DI SIM RIM NOP HLT",
+    instructions: [
+      "PUSH",
+      "POP",
+      "XTHL",
+      "SPHL",
+      "IN",
+      "OUT",
+      "EI",
+      "DI",
+      "SIM",
+      "RIM",
+      "NOP",
+      "HLT",
+    ],
   },
-];
+] satisfies {
+  name: string;
+  instructions: (keyof typeof I8085_INSTRUCTION_INFO)[];
+}[];
 
 const addressing = [
   ["Register", "MOV A,B", "The operand lives in a CPU register."],
@@ -113,12 +201,24 @@ export function Docs8085({
                       >
                         {group.name}
                       </h3>
-                      <p
-                        className="font-mono text-xs leading-6"
+                      <div
+                        className="flex flex-wrap gap-x-2 gap-y-1 font-mono text-xs leading-6"
                         style={{ color: colorScheme.text }}
                       >
-                        {group.instructions}
-                      </p>
+                        {group.instructions.map((instruction) => (
+                          <span
+                            key={instruction}
+                            title={I8085_INSTRUCTION_INFO[instruction]}
+                            aria-label={`${instruction}: ${I8085_INSTRUCTION_INFO[instruction]}`}
+                            className="cursor-help rounded px-1"
+                            style={{
+                              backgroundColor: `${colorScheme.hover}66`,
+                            }}
+                          >
+                            {instruction}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>

@@ -33,9 +33,20 @@ const splitValues = (value: string) => {
   return values;
 };
 
+const stripComment = (value: string) => {
+  let quote = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if ((char === "'" || char === '"') && (!quote || quote === char))
+      quote = quote ? "" : char;
+    if (char === ";" && !quote) return value.slice(0, index);
+  }
+  return value;
+};
+
 const parseLines = (source: string): SourceLine[] =>
   source.split("\n").map((raw, index) => {
-    const sourceLine = raw.split(";")[0]?.trim() ?? "";
+    const sourceLine = stripComment(raw).trim();
     if (!sourceLine) return { line: index + 1, operands: [], source: "" };
     let rest = sourceLine;
     let label: string | undefined;
@@ -145,6 +156,15 @@ export class I8085Assembler {
     let location = 0;
     let hasStart = false;
     for (const node of this.lines) {
+      if (node.label && !node.mnemonic) {
+        if (this.symbolTable.has(node.label))
+          throw new I8085AssemblyError(
+            `Duplicate symbol: ${node.label}`,
+            node.line,
+          );
+        this.symbolTable.set(node.label, location);
+        continue;
+      }
       if (!node.mnemonic) continue;
       if (node.mnemonic === "END") break;
       if (node.mnemonic === "ORG") {

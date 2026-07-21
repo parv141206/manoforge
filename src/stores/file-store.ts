@@ -149,6 +149,34 @@ const defaultRegisters: Registers = {
 
 const generateId = () => Math.random().toString(36).substring(2, 15);
 
+const normalizeFileName = (name: string, architecture: Architecture) => {
+  const trimmed = name.trim();
+  const extension = extensionForArchitecture(architecture);
+  return /\.(asm|a85)$/i.test(trimmed) ? trimmed : `${trimmed}${extension}`;
+};
+
+const uniqueFileName = (
+  name: string,
+  files: FileItem[],
+  ignoredId?: string,
+) => {
+  const existing = new Set(
+    files
+      .filter((file) => file.id !== ignoredId)
+      .map((file) => file.name.toLowerCase()),
+  );
+  const dot = name.lastIndexOf(".");
+  const stem = dot >= 0 ? name.slice(0, dot) : name;
+  const ext = dot >= 0 ? name.slice(dot) : "";
+  let finalName = name;
+  let n = 1;
+  while (existing.has(finalName.toLowerCase())) {
+    finalName = `${stem} (${n})${ext}`;
+    n += 1;
+  }
+  return finalName;
+};
+
 export const useFileStore = create<FileStore>()(
   persist(
     (set, get) => ({
@@ -178,10 +206,12 @@ export const useFileStore = create<FileStore>()(
       },
 
       createFile: (name) => {
-        const extension = extensionForArchitecture(get().architecture);
         const newFile: FileItem = {
           id: generateId(),
-          name: /\.(asm|a85)$/i.test(name) ? name : `${name}${extension}`,
+          name: uniqueFileName(
+            normalizeFileName(name, get().architecture),
+            get().files,
+          ),
           content: "",
         };
         set((state) => ({
@@ -222,9 +252,18 @@ export const useFileStore = create<FileStore>()(
       },
 
       renameFile: (id, newName) => {
+        const target = get().files.find((file) => file.id === id);
+        const architecture = target
+          ? architectureForFile(target.name)
+          : get().architecture;
+        const finalName = uniqueFileName(
+          normalizeFileName(newName, architecture),
+          get().files,
+          id,
+        );
         set((state) => ({
           files: state.files.map((f) =>
-            f.id === id ? { ...f, name: newName } : f,
+            f.id === id ? { ...f, name: finalName } : f,
           ),
         }));
         if (get().activeFileId === id) {
@@ -258,13 +297,11 @@ export const useFileStore = create<FileStore>()(
                 : state.openFileIds,
             registers: changed ? { ...defaultRegisters } : state.registers,
             memory: changed
-              ? new Array<number>(
-                  memorySizeForArchitecture(architecture),
-                ).fill(0)
+              ? new Array<number>(memorySizeForArchitecture(architecture)).fill(
+                  0,
+                )
               : state.memory,
-            ports: changed
-              ? new Array<number>(256).fill(0)
-              : state.ports,
+            ports: changed ? new Array<number>(256).fill(0) : state.ports,
             execution: changed
               ? {
                   isRunning: false,
@@ -282,7 +319,6 @@ export const useFileStore = create<FileStore>()(
                 },
           };
         });
-        get().setActiveFile(get().activeFileId);
       },
 
       closeOpenFile: (id) => {
@@ -354,9 +390,7 @@ export const useFileStore = create<FileStore>()(
         const created: FileItem[] = [];
 
         for (const item of incomingFiles) {
-          const baseName = /\.(asm|a85)$/i.test(item.name)
-            ? item.name
-            : `${item.name}${extensionForArchitecture(get().architecture)}`;
+          const baseName = normalizeFileName(item.name, get().architecture);
           let finalName = baseName;
           let n = 1;
           while (existing.has(finalName.toLowerCase())) {

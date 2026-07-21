@@ -48,6 +48,7 @@ function SidebarInner() {
   const createInputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const createCommittedRef = useRef(false);
 
   useEffect(() => {
     if (isCreating && createInputRef.current) {
@@ -63,11 +64,15 @@ function SidebarInner() {
   }, [editingId]);
 
   const handleCreate = () => {
-    if (newFileName.trim()) {
-      createFile(newFileName.trim());
-      setNewFileName("");
-      setIsCreating(false);
-    }
+    const name = newFileName.trim();
+    if (!name || createCommittedRef.current) return;
+    createCommittedRef.current = true;
+    createFile(name);
+    setNewFileName("");
+    setIsCreating(false);
+    window.requestAnimationFrame(() => {
+      createCommittedRef.current = false;
+    });
   };
 
   const handleRename = (id: string) => {
@@ -99,8 +104,7 @@ function SidebarInner() {
     try {
       const zip = await JSZip.loadAsync(file);
       const asmEntries = Object.values(zip.files).filter(
-        (entry) =>
-          !entry.dir && /\.(asm|a85)$/i.test(entry.name.toLowerCase()),
+        (entry) => !entry.dir && /\.(asm|a85)$/i.test(entry.name.toLowerCase()),
       );
 
       const importedFiles: { name: string; content: string }[] = [];
@@ -230,7 +234,10 @@ function SidebarInner() {
             <VscCloudDownload size={16} />
           </button>
           <button
-            onClick={() => setIsCreating(true)}
+            onClick={() => {
+              createCommittedRef.current = false;
+              setIsCreating(true);
+            }}
             className="rounded p-1 transition-colors"
             style={{ color: colorScheme.textMuted }}
             onMouseEnter={(e) =>
@@ -439,7 +446,10 @@ function SidebarInner() {
           }}
         >
           <ContextMenuItem
-            onClick={() => setIsCreating(true)}
+            onClick={() => {
+              createCommittedRef.current = false;
+              setIsCreating(true);
+            }}
             style={{ color: colorScheme.text }}
           >
             <VscNewFile size={14} className="mr-2" />

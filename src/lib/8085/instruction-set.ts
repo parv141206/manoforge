@@ -218,6 +218,19 @@ const requireOperand = (
   return value;
 };
 
+const requireOperandCount = (
+  operands: string[],
+  count: number,
+  mnemonic: string,
+  line: number,
+) => {
+  if (operands.length !== count)
+    throw new I8085AssemblyError(
+      `${mnemonic} expects ${count} operand${count === 1 ? "" : "s"}`,
+      line,
+    );
+};
+
 const regCode = (value: string, line: number) => {
   const code = registers[value];
   if (code === undefined)
@@ -246,12 +259,17 @@ export function encodeInstruction(
   resolve: (expression: string) => number,
 ) {
   const op = mnemonic.toUpperCase();
-  if (fixed[op] !== undefined) return [fixed[op]];
+  if (fixed[op] !== undefined) {
+    requireOperandCount(operands, 0, op, line);
+    return [fixed[op]];
+  }
   if (direct16[op] !== undefined) {
+    requireOperandCount(operands, 1, op, line);
     const value = resolve(requireOperand(operands, 0, op, line)) & 0xffff;
     return [direct16[op], value & 0xff, value >> 8];
   }
   if (immediate8[op] !== undefined) {
+    requireOperandCount(operands, 1, op, line);
     const value = resolve(requireOperand(operands, 0, op, line));
     if (value < -128 || value > 255)
       throw new I8085AssemblyError(
@@ -261,6 +279,7 @@ export function encodeInstruction(
     return [immediate8[op], value & 0xff];
   }
   if (op === "MOV") {
+    requireOperandCount(operands, 2, op, line);
     const dest = regCode(requireOperand(operands, 0, op, line), line);
     const source = regCode(requireOperand(operands, 1, op, line), line);
     if (dest === 6 && source === 6)
@@ -268,6 +287,7 @@ export function encodeInstruction(
     return [0x40 | (dest << 3) | source];
   }
   if (op === "MVI") {
+    requireOperandCount(operands, 2, op, line);
     const dest = regCode(requireOperand(operands, 0, op, line), line);
     const value = resolve(requireOperand(operands, 1, op, line));
     if (value < -128 || value > 255)
@@ -275,38 +295,45 @@ export function encodeInstruction(
     return [0x06 | (dest << 3), value & 0xff];
   }
   if (op === "LXI") {
+    requireOperandCount(operands, 2, op, line);
     const pair = pairCode(requireOperand(operands, 0, op, line), line);
     const value = resolve(requireOperand(operands, 1, op, line)) & 0xffff;
     return [0x01 | (pair << 4), value & 0xff, value >> 8];
   }
   if (op === "LDAX" || op === "STAX") {
+    requireOperandCount(operands, 1, op, line);
     const pair = pairCode(requireOperand(operands, 0, op, line), line);
     if (pair > 1)
       throw new I8085AssemblyError(`${op} only accepts B or D`, line);
     return [(op === "LDAX" ? 0x0a : 0x02) | (pair << 4)];
   }
   if (op === "INR" || op === "DCR") {
+    requireOperandCount(operands, 1, op, line);
     return [
       (op === "INR" ? 0x04 : 0x05) |
         (regCode(requireOperand(operands, 0, op, line), line) << 3),
     ];
   }
   if (op === "INX" || op === "DCX" || op === "DAD") {
+    requireOperandCount(operands, 1, op, line);
     const base = op === "INX" ? 0x03 : op === "DCX" ? 0x0b : 0x09;
     return [
       base | (pairCode(requireOperand(operands, 0, op, line), line) << 4),
     ];
   }
   if (aluBase[op] !== undefined) {
+    requireOperandCount(operands, 1, op, line);
     return [aluBase[op] | regCode(requireOperand(operands, 0, op, line), line)];
   }
   if (op === "PUSH" || op === "POP") {
+    requireOperandCount(operands, 1, op, line);
     return [
       (op === "PUSH" ? 0xc5 : 0xc1) |
         (pairCode(requireOperand(operands, 0, op, line), line, true) << 4),
     ];
   }
   if (op === "RST") {
+    requireOperandCount(operands, 1, op, line);
     const value = resolve(requireOperand(operands, 0, op, line));
     if (value < 0 || value > 7)
       throw new I8085AssemblyError("RST operand must be 0 through 7", line);
