@@ -1,3 +1,10 @@
+import {
+  create8085MachineCycle,
+  finalize8085TimingTrace,
+  type I8085MachineCycle,
+  type I8085TimingTrace,
+} from "./timing";
+
 export interface I8085Registers {
   A: number;
   B: number;
@@ -27,6 +34,7 @@ export interface I8085StepResult {
   halted: boolean;
   instruction: string;
   notations: string[];
+  timing: I8085TimingTrace;
 }
 
 const parity = (value: number) => {
@@ -49,6 +57,9 @@ export function step8085(
   const portWrites: { port: number; value: number }[] = [];
   const start = r.PC & 0xffff;
   const opcode = memory[start] ?? 0;
+  const machineCycles: I8085MachineCycle[] = [
+    create8085MachineCycle("opcode-fetch", "Opcode fetch", start, opcode),
+  ];
   r.IR = opcode;
   r.PC = (start + 1) & 0xffff;
   let halted = false;
@@ -58,11 +69,25 @@ export function step8085(
     `T2-T3: IR <- M[PC] (${opcode.toString(16).toUpperCase().padStart(2, "0")}), PC <- PC + 1`,
   ];
 
-  const read8 = (address: number) => memory[address & 0xffff] ?? 0;
-  const write8 = (address: number, value: number) =>
-    memoryWrites.push({ address: address & 0xffff, value: value & 0xff });
+  const peek8 = (address: number) => memory[address & 0xffff] ?? 0;
+  const read8 = (address: number, label = "Memory read") => {
+    const normalized = address & 0xffff;
+    const value = peek8(normalized);
+    machineCycles.push(
+      create8085MachineCycle("memory-read", label, normalized, value),
+    );
+    return value;
+  };
+  const write8 = (address: number, value: number, label = "Memory write") => {
+    const normalized = address & 0xffff;
+    const byte = value & 0xff;
+    memoryWrites.push({ address: normalized, value: byte });
+    machineCycles.push(
+      create8085MachineCycle("memory-write", label, normalized, byte),
+    );
+  };
   const next8 = () => {
-    const value = read8(r.PC);
+    const value = read8(r.PC, "Read instruction byte");
     r.PC = (r.PC + 1) & 0xffff;
     return value;
   };
@@ -101,7 +126,7 @@ export function step8085(
     if (code === 3) return r.E8;
     if (code === 4) return r.H;
     if (code === 5) return r.L;
-    if (code === 6) return read8(getHL());
+    if (code === 6) return read8(getHL(), "Read operand from M");
     return r.A;
   };
   const setReg = (code: number, value: number) => {
@@ -112,7 +137,7 @@ export function step8085(
     else if (code === 3) r.E8 = byte;
     else if (code === 4) r.H = byte;
     else if (code === 5) r.L = byte;
-    else if (code === 6) write8(getHL(), byte);
+    else if (code === 6) write8(getHL(), byte, "Write result to M");
     else r.A = byte;
   };
   const setSZP = (value: number) => {
@@ -146,14 +171,14 @@ export function step8085(
   };
   const push = (value: number) => {
     r.SP = (r.SP - 1) & 0xffff;
-    write8(r.SP, value >> 8);
+    write8(r.SP, value >> 8, "Stack write high byte");
     r.SP = (r.SP - 1) & 0xffff;
-    write8(r.SP, value);
+    write8(r.SP, value, "Stack write low byte");
   };
   const pop = () => {
-    const low = read8(r.SP);
+    const low = read8(r.SP, "Stack read low byte");
     r.SP = (r.SP + 1) & 0xffff;
-    const high = read8(r.SP);
+    const high = read8(r.SP, "Stack read high byte");
     r.SP = (r.SP + 1) & 0xffff;
     return low | (high << 8);
   };
@@ -242,24 +267,24 @@ export function step8085(
     opcode === 0x1a
   ) {
     const pair = opcode & 0x10 ? 1 : 0;
-    if (opcode & 0x08) r.A = read8(getPair(pair));
-    else write8(getPair(pair), r.A);
+    if (opcode & 0x08) r.A = read8(getPair(pair), "Read indirect operand");
+    else write8(getPair(pair), r.A, "Write indirect operand");
     instruction = `${opcode & 0x08 ? "LDAX" : "STAX"} ${pairName[pair]}`;
   } else if ([0x22, 0x2a, 0x32, 0x3a].includes(opcode)) {
     const address = next16();
     if (opcode === 0x22) {
-      write8(address, r.L);
-      write8(address + 1, r.H);
+      write8(address, r.L, "Write L direct");
+      write8(address + 1, r.H, "Write H direct");
       instruction = "SHLD";
     } else if (opcode === 0x2a) {
-      r.L = read8(address);
-      r.H = read8(address + 1);
+      r.L = read8(address, "Read L direct");
+      r.H = read8(address + 1, "Read H direct");
       instruction = "LHLD";
     } else if (opcode === 0x32) {
-      write8(address, r.A);
+      write8(address, r.A, "Write A direct");
       instruction = "STA";
     } else {
-      r.A = read8(address);
+      r.A = read8(address, "Read A direct");
       instruction = "LDA";
     }
     instruction += ` ${address.toString(16).toUpperCase().padStart(4, "0")}H`;
@@ -337,7 +362,7 @@ export function step8085(
     instruction =
       opcode === 0xc3
         ? `JMP ${address.toString(16).toUpperCase().padStart(4, "0")}H`
-        : `J${conditionName[code]} ${address.toString(16).toUpperCase().padStart(4, "0")}H`;
+        : `J${conditionName[code]} ${address.toString(16).toUpperCase().padStart(4, "0")}H${taken ? "" : " (not taken)"}`;
   } else if (opcode === 0xcd || (opcode & 0xc7) === 0xc4) {
     const address = next16();
     const code = (opcode >> 3) & 7;
@@ -349,12 +374,15 @@ export function step8085(
     instruction =
       opcode === 0xcd
         ? `CALL ${address.toString(16).toUpperCase().padStart(4, "0")}H`
-        : `C${conditionName[code]} ${address.toString(16).toUpperCase().padStart(4, "0")}H`;
+        : `C${conditionName[code]} ${address.toString(16).toUpperCase().padStart(4, "0")}H${taken ? "" : " (not taken)"}`;
   } else if (opcode === 0xc9 || (opcode & 0xc7) === 0xc0) {
     const code = (opcode >> 3) & 7;
     const taken = opcode === 0xc9 || condition(code);
     if (taken) r.PC = pop();
-    instruction = opcode === 0xc9 ? "RET" : `R${conditionName[code]}`;
+    instruction =
+      opcode === 0xc9
+        ? "RET"
+        : `R${conditionName[code]}${taken ? "" : " (not taken)"}`;
   } else if ((opcode & 0xc7) === 0xc7) {
     const vector = (opcode >> 3) & 7;
     push(r.PC);
@@ -374,10 +402,10 @@ export function step8085(
     }
     instruction = `${opcode & 4 ? "PUSH" : "POP"} ${names[code]}`;
   } else if (opcode === 0xe3) {
-    const low = read8(r.SP),
-      high = read8(r.SP + 1);
-    write8(r.SP, r.L);
-    write8(r.SP + 1, r.H);
+    const low = read8(r.SP, "Read stack low byte"),
+      high = read8(r.SP + 1, "Read stack high byte");
+    write8(r.SP, r.L, "Write L to stack");
+    write8(r.SP + 1, r.H, "Write H to stack");
     r.L = low;
     r.H = high;
     instruction = "XTHL";
@@ -393,8 +421,17 @@ export function step8085(
     instruction = "SPHL";
   } else if (opcode === 0xdb || opcode === 0xd3) {
     const port = next8();
-    if (opcode === 0xdb) r.A = ports[port] ?? 0;
-    else portWrites.push({ port, value: r.A });
+    if (opcode === 0xdb) {
+      r.A = ports[port] ?? 0;
+      machineCycles.push(
+        create8085MachineCycle("io-read", "I/O read", port, r.A),
+      );
+    } else {
+      portWrites.push({ port, value: r.A });
+      machineCycles.push(
+        create8085MachineCycle("io-write", "I/O write", port, r.A),
+      );
+    }
     instruction = `${opcode === 0xdb ? "IN" : "OUT"} ${port.toString(16).toUpperCase().padStart(2, "0")}H`;
   } else if (opcode === 0xf3) {
     r.IE = 0;
@@ -416,6 +453,12 @@ export function step8085(
     );
 
   notations.push(`Execute: ${instruction}`);
+  const timing = finalize8085TimingTrace(
+    start,
+    opcode,
+    instruction,
+    machineCycles,
+  );
   return {
     registers: r,
     memoryWrites,
@@ -423,5 +466,6 @@ export function step8085(
     halted,
     instruction,
     notations,
+    timing,
   };
 }

@@ -6,6 +6,7 @@ import { useThemeStore } from "@/stores/theme-store";
 import { useUiStore } from "@/stores/ui-store";
 import { VscSymbolNumeric, VscCode } from "react-icons/vsc";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { ExecutionLog } from "./execution-log";
 
 type DisplayMode = "HEX" | "DEC" | "BIN";
 type TabMode = "registers" | "machine";
@@ -278,7 +279,9 @@ function RegistersPanelInner() {
               ))}
             </div>
 
-            {execution?.notations?.length > 0 && (
+            {(execution?.notations?.length > 0 ||
+              (architecture === "8085" &&
+                execution.i8085History.length > 0)) && (
               <div
                 className="flex min-h-0 flex-1 flex-col border-t pt-1.5"
                 style={{ borderColor: colorScheme.border }}
@@ -307,7 +310,9 @@ function RegistersPanelInner() {
                     className="font-mono text-[9px]"
                     style={{ color: colorScheme.textMuted }}
                   >
-                    {execution.notations.length}
+                    {architecture === "8085"
+                      ? `${execution.i8085Cursor}/${execution.i8085History.length}`
+                      : execution.notations.length}
                   </span>
                 </div>
                 <div
@@ -317,34 +322,48 @@ function RegistersPanelInner() {
                     backgroundColor: colorScheme.sidebar,
                   }}
                 >
-                  {execution.notations.map((note, i) => {
-                    const isError = note.startsWith("Error");
-                    const isStep = note.startsWith("T");
-                    return (
-                      <div
-                        key={i}
-                        className="px-1.5 py-1 font-mono text-[9px] leading-4"
-                        style={{
-                          borderBottom:
-                            i === execution.notations.length - 1
-                              ? "none"
-                              : `1px solid ${colorScheme.border}`,
-                          backgroundColor: isError
-                            ? "#ef44441a"
-                            : isStep
-                              ? `${colorScheme.accent}12`
-                              : "transparent",
-                          color: isError
-                            ? "#ef4444"
-                            : isStep
-                              ? colorScheme.text
-                              : colorScheme.textMuted,
-                        }}
-                      >
-                        {note === "────────────────────" ? "" : note}
-                      </div>
-                    );
-                  })}
+                  {architecture === "8085" ? (
+                    <ExecutionLog
+                      history={execution.i8085History}
+                      cursor={execution.i8085Cursor}
+                      notations={execution.notations}
+                      mode={executionLogMode}
+                      accent={colorScheme.accent}
+                      border={colorScheme.border}
+                      panel={colorScheme.panel}
+                      text={colorScheme.text}
+                      textMuted={colorScheme.textMuted}
+                    />
+                  ) : (
+                    execution.notations.map((note, i) => {
+                      const isError = note.startsWith("Error");
+                      const isStep = note.startsWith("T");
+                      return (
+                        <div
+                          key={i}
+                          className="px-1.5 py-1 font-mono text-[9px] leading-4"
+                          style={{
+                            borderBottom:
+                              i === execution.notations.length - 1
+                                ? "none"
+                                : `1px solid ${colorScheme.border}`,
+                            backgroundColor: isError
+                              ? "#ef44441a"
+                              : isStep
+                                ? `${colorScheme.accent}12`
+                                : "transparent",
+                            color: isError
+                              ? "#ef4444"
+                              : isStep
+                                ? colorScheme.text
+                                : colorScheme.textMuted,
+                          }}
+                        >
+                          {note === "────────────────────" ? "" : note}
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             )}

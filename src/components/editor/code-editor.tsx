@@ -21,6 +21,7 @@ import {
 } from "react-icons/vsc";
 import { TbAssembly } from "react-icons/tb";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { useShallow } from "zustand/react/shallow";
 
 const INSTRUCTIONS = [
   "AND",
@@ -52,26 +53,7 @@ const INSTRUCTIONS = [
 
 const DIRECTIVES = ["ORG", "END", "DEC", "HEX"];
 
-const IGNORED_SUGGESTION_REFRESH_KEYS = new Set([
-  "ArrowUp",
-  "ArrowDown",
-  "ArrowLeft",
-  "ArrowRight",
-  "Home",
-  "End",
-  "PageUp",
-  "PageDown",
-  "Shift",
-  "Control",
-  "Alt",
-  "Meta",
-  "CapsLock",
-  "Tab",
-  "Enter",
-  "Escape",
-]);
-
-const SUGGESTION_DEBOUNCE_MS = 280;
+const SUGGESTION_DEBOUNCE_MS = 45;
 const SUGGESTION_MIN_WORD_LEN = 2;
 
 function highlightLine(
@@ -208,8 +190,7 @@ function formatAssemblyCode(code: string, architecture: Architecture): string {
         ? /^(\w+):\s*(.*)$/.exec(codePart)
         : /^(\w+),\s*(.*)$/.exec(codePart);
     if (labelMatch) {
-      const label =
-        labelMatch[1] + (architecture === "8085" ? ":" : ",");
+      const label = labelMatch[1] + (architecture === "8085" ? ":" : ",");
       const rest = labelMatch[2] ?? "";
       const labelPadded = label.padEnd(LABEL_COLUMN);
       const restPadded = rest ? rest : "";
@@ -226,17 +207,30 @@ function CodeEditorInner({
   fileIdOverride,
   onExternalFileDrop,
 }: CodeEditorProps) {
+  const files = useFileStore((state) => state.files);
   const {
-    files,
     openFileIds,
-    activeFileId: storeActiveFileId,
+    storeActiveFileId,
     setActiveFile,
     closeOpenFile,
     reorderOpenFiles,
     updateFileContent,
-    execution,
+    currentLine,
+    addressToLine,
     architecture,
-  } = useFileStore();
+  } = useFileStore(
+    useShallow((state) => ({
+      openFileIds: state.openFileIds,
+      storeActiveFileId: state.activeFileId,
+      setActiveFile: state.setActiveFile,
+      closeOpenFile: state.closeOpenFile,
+      reorderOpenFiles: state.reorderOpenFiles,
+      updateFileContent: state.updateFileContent,
+      currentLine: state.execution.currentLine,
+      addressToLine: state.execution.addressToLine,
+      architecture: state.architecture,
+    })),
+  );
   const { colorScheme } = useThemeStore();
   const {
     layoutMode,
@@ -256,6 +250,9 @@ function CodeEditorInner({
   const suggestionDebounceRef = React.useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const contentCommitRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const [viewportContentWidth, setViewportContentWidth] = React.useState(0);
   const [monoCharWidth, setMonoCharWidth] = React.useState(0);
 
@@ -275,7 +272,55 @@ function CodeEditorInner({
 
   const activeFileId = fileIdOverride ?? storeActiveFileId;
   const activeFile = files?.find((f) => f.id === activeFileId);
-  const content = activeFile?.content ?? "";
+  const storedContent = activeFile?.content ?? "";
+  const [content, setContent] = React.useState(storedContent);
+  const draftFileIdRef = React.useRef(activeFileId);
+  const draftContentRef = React.useRef(storedContent);
+
+  const setEditorContent = React.useCallback(
+    (nextContent: string, immediate = false) => {
+      if (!activeFileId) return;
+      setContent(nextContent);
+      draftFileIdRef.current = activeFileId;
+      draftContentRef.current = nextContent;
+      if (contentCommitRef.current) clearTimeout(contentCommitRef.current);
+      if (immediate) {
+        contentCommitRef.current = null;
+        updateFileContent(activeFileId, nextContent);
+        return;
+      }
+      contentCommitRef.current = setTimeout(() => {
+        contentCommitRef.current = null;
+        updateFileContent(activeFileId, nextContent);
+      }, 90);
+    },
+    [activeFileId, updateFileContent],
+  );
+
+  React.useLayoutEffect(() => {
+    if (draftFileIdRef.current !== activeFileId) {
+      if (contentCommitRef.current) clearTimeout(contentCommitRef.current);
+      const previousId = draftFileIdRef.current;
+      const previousFile = useFileStore
+        .getState()
+        .files.find((item) => item.id === previousId);
+      if (previousId && previousFile?.content !== draftContentRef.current) {
+        updateFileContent(previousId, draftContentRef.current);
+      }
+      contentCommitRef.current = null;
+      draftFileIdRef.current = activeFileId;
+      draftContentRef.current = storedContent;
+      setContent(storedContent);
+      return;
+    }
+    if (
+      !contentCommitRef.current &&
+      storedContent !== draftContentRef.current
+    ) {
+      draftContentRef.current = storedContent;
+      setContent(storedContent);
+    }
+  }, [activeFileId, storedContent, updateFileContent]);
   const lines = React.useMemo(() => content.split("\n"), [content]);
   const instructions: readonly string[] =
     architecture === "8085" ? I8085_INSTRUCTIONS : INSTRUCTIONS;
@@ -422,8 +467,18 @@ function CodeEditorInner({
       if (suggestionDebounceRef.current) {
         clearTimeout(suggestionDebounceRef.current);
       }
+      if (contentCommitRef.current) {
+        clearTimeout(contentCommitRef.current);
+        const id = draftFileIdRef.current;
+        const file = useFileStore
+          .getState()
+          .files.find((item) => item.id === id);
+        if (id && file?.content !== draftContentRef.current) {
+          updateFileContent(id, draftContentRef.current);
+        }
+      }
     };
-  }, []);
+  }, [updateFileContent]);
 
   const updateCursorInfo = React.useCallback(
     (textarea: HTMLTextAreaElement) => {
@@ -706,7 +761,7 @@ function CodeEditorInner({
     const after = content.slice(pos);
     const newContent = before + suggestion.text + after;
 
-    updateFileContent(activeFileId, newContent);
+    setEditorContent(newContent, true);
     setSuggestions([]);
     suppressSuggestionsRef.current = false;
     if (suggestionDebounceRef.current) {
@@ -724,7 +779,7 @@ function CodeEditorInner({
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     suppressSuggestionsRef.current = false;
     if (activeFileId) {
-      updateFileContent(activeFileId, e.target.value);
+      setEditorContent(e.target.value);
     }
 
     updateCursorInfo(e.target);
@@ -761,13 +816,10 @@ function CodeEditorInner({
 
   const isCurrentLine = (lineIndex: number) => {
     // execution.currentLine stores the memory address (PC)
-    if (
-      execution?.currentLine === null ||
-      execution?.currentLine === undefined
-    ) {
+    if (currentLine === null || currentLine === undefined) {
       return false;
     }
-    const mappedLine = execution.addressToLine?.[execution.currentLine];
+    const mappedLine = addressToLine[currentLine];
     return mappedLine === lineIndex;
   };
 
@@ -794,7 +846,7 @@ function CodeEditorInner({
       e.preventDefault();
       if (activeFileId) {
         const formatted = formatAssemblyCode(val, architecture);
-        updateFileContent(activeFileId, formatted);
+        setEditorContent(formatted, true);
       }
       return;
     }
@@ -824,7 +876,7 @@ function CodeEditorInner({
         currentLine +
         val.slice(actualLineEnd);
       if (activeFileId) {
-        updateFileContent(activeFileId, newContent);
+        setEditorContent(newContent, true);
         setTimeout(() => {
           const newPos = actualLineEnd + 1 + (pos - lineStart);
           textarea.setSelectionRange(newPos, newPos);
@@ -857,7 +909,7 @@ function CodeEditorInner({
       const newContent =
         val.slice(0, lineStart) + newLine + val.slice(actualLineEnd);
       if (activeFileId) {
-        updateFileContent(activeFileId, newContent);
+        setEditorContent(newContent, true);
         setTimeout(() => {
           textarea.setSelectionRange(newPos, newPos);
         }, 0);
@@ -873,7 +925,7 @@ function CodeEditorInner({
       const actualLineEnd = lineEnd === -1 ? val.length : lineEnd + 1;
       const newContent = val.slice(0, lineStart) + val.slice(actualLineEnd);
       if (activeFileId) {
-        updateFileContent(activeFileId, newContent);
+        setEditorContent(newContent, true);
         setTimeout(() => {
           textarea.setSelectionRange(lineStart, lineStart);
         }, 0);
@@ -903,7 +955,7 @@ function CodeEditorInner({
       const newPos = prevLineStart + offsetInLine;
 
       if (activeFileId) {
-        updateFileContent(activeFileId, newContent);
+        setEditorContent(newContent, true);
         setTimeout(() => {
           textarea.setSelectionRange(newPos, newPos);
         }, 0);
@@ -933,7 +985,7 @@ function CodeEditorInner({
       const newPos = lineStart + nextLine.length + 1 + offsetInLine;
 
       if (activeFileId) {
-        updateFileContent(activeFileId, newContent);
+        setEditorContent(newContent, true);
         setTimeout(() => {
           textarea.setSelectionRange(newPos, newPos);
         }, 0);
@@ -972,7 +1024,7 @@ function CodeEditorInner({
       const tabText = " ".repeat(tabSize);
       const newContent = before + tabText + after;
       if (activeFileId) {
-        updateFileContent(activeFileId, newContent);
+        setEditorContent(newContent, true);
         setTimeout(() => {
           const newPos = pos + tabText.length;
           textarea.setSelectionRange(newPos, newPos);
@@ -993,7 +1045,7 @@ function CodeEditorInner({
       const newContent = before + "\n" + indent + after;
       const indentLen = indent.length;
       if (activeFileId) {
-        updateFileContent(activeFileId, newContent);
+        setEditorContent(newContent, true);
         setTimeout(() => {
           const newPos = pos + 1 + indentLen;
           textarea.setSelectionRange(newPos, newPos);
@@ -1270,21 +1322,27 @@ function CodeEditorInner({
             onChange={handleChange}
             onKeyUp={(e) => {
               updateCursorInfo(e.currentTarget);
-              if (IGNORED_SUGGESTION_REFRESH_KEYS.has(e.key)) return;
-              if (e.ctrlKey || e.metaKey || e.altKey) return;
-              scheduleSuggestionRefresh(e.currentTarget, e.currentTarget.value);
             }}
             onSelect={(e) => {
               updateCursorInfo(e.currentTarget);
-              scheduleSuggestionRefresh(e.currentTarget, e.currentTarget.value);
             }}
             onClick={(e) => {
               updateCursorInfo(e.currentTarget);
-              scheduleSuggestionRefresh(e.currentTarget, e.currentTarget.value);
+              refreshSuggestionsImmediate(
+                e.currentTarget,
+                e.currentTarget.value,
+              );
             }}
             onScroll={handleScroll}
             onKeyDown={handleKeyDown}
-            onBlur={() => setTimeout(() => setSuggestions([]), 150)}
+            onBlur={() => {
+              if (contentCommitRef.current && activeFileId) {
+                clearTimeout(contentCommitRef.current);
+                contentCommitRef.current = null;
+                updateFileContent(activeFileId, draftContentRef.current);
+              }
+              setTimeout(() => setSuggestions([]), 150);
+            }}
             spellCheck={false}
             className="absolute inset-0 resize-none bg-transparent p-2 font-mono text-transparent caret-current outline-none"
             style={{

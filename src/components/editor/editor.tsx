@@ -7,23 +7,36 @@ import { Sidebar } from "./sidebar";
 import { CodeEditor } from "./code-editor";
 import { RegistersPanel } from "./registers-panel";
 import { MemoryPanel } from "./memory-panel";
+import { TimingPanel } from "./timing-panel";
 import { CircuitDesigner } from "@/components/circuit/circuit-designer";
 import { useThemeStore } from "@/stores/theme-store";
 import { useUiStore } from "@/stores/ui-store";
 import { useFileStore } from "@/stores/file-store";
 import { VscMenu, VscSymbolNumeric, VscClose } from "react-icons/vsc";
 import { Resizable, ResizablePanel } from "@/components/ui/resizable";
+import { useShallow } from "zustand/react/shallow";
 
-type MobilePanel = "registers" | "memory" | null;
+type MobilePanel = "registers" | "memory" | "timing" | null;
 type SplitDirection = "vertical" | "horizontal";
 type DropEdge = "left" | "right" | "top" | "bottom";
 type WorkspaceMode = "assembly" | "circuit";
 
 export function Editor() {
   const { colorScheme } = useThemeStore();
-  const { layoutMode } = useUiStore();
-  const { activeFileId, files, setActiveFile, execution, setDelay } =
-    useFileStore();
+  const layoutMode = useUiStore((state) => state.layoutMode);
+  const fileIds = useFileStore(
+    useShallow((state) => state.files.map((file) => file.id)),
+  );
+  const { activeFileId, setActiveFile, delay, setDelay, architecture } =
+    useFileStore(
+      useShallow((state) => ({
+        activeFileId: state.activeFileId,
+        setActiveFile: state.setActiveFile,
+        delay: state.execution.delay,
+        setDelay: state.setDelay,
+        architecture: state.architecture,
+      })),
+    );
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [mobilePanelOpen, setMobilePanelOpen] = React.useState(false);
   const [activeMobilePanel, setActiveMobilePanel] =
@@ -36,6 +49,9 @@ export function Editor() {
   const [isDraggingSplit, setIsDraggingSplit] = React.useState(false);
   const [workspaceMode, setWorkspaceMode] =
     React.useState<WorkspaceMode>("assembly");
+  const [timingPanelOpen, setTimingPanelOpen] = React.useState(false);
+  const [timingPanelWidth, setTimingPanelWidth] = React.useState(340);
+  const [isResizingTiming, setIsResizingTiming] = React.useState(false);
   const splitContainerRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -55,11 +71,15 @@ export function Editor() {
 
   React.useEffect(() => {
     if (!splitFileId) return;
-    const exists = files.some((f) => f.id === splitFileId);
+    const exists = fileIds.includes(splitFileId);
     if (!exists) {
       setSplitFileId(null);
     }
-  }, [files, splitFileId]);
+  }, [fileIds, splitFileId]);
+
+  React.useEffect(() => {
+    if (architecture !== "8085") setTimingPanelOpen(false);
+  }, [architecture]);
 
   React.useEffect(() => {
     if (!isDraggingSplit) return;
@@ -93,6 +113,33 @@ export function Editor() {
       document.body.style.cursor = "";
     };
   }, [isDraggingSplit, splitDirection]);
+
+  React.useEffect(() => {
+    if (!isResizingTiming) return;
+
+    const handleMove = (e: MouseEvent) => {
+      const available = Math.max(280, Math.floor(window.innerWidth * 0.46));
+      setTimingPanelWidth(
+        Math.min(
+          Math.min(520, available),
+          Math.max(280, window.innerWidth - e.clientX),
+        ),
+      );
+    };
+    const handleUp = () => setIsResizingTiming(false);
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+  }, [isResizingTiming]);
 
   const handlePanelToggle = () => {
     setMobilePanelOpen(!mobilePanelOpen);
@@ -182,10 +229,12 @@ export function Editor() {
         >
           <VscMenu size={20} />
         </button>
-        <div className="h-full flex-1">
+        <div className="h-full min-w-0 flex-1">
           <Header
             workspaceMode={workspaceMode}
             onWorkspaceModeChange={setWorkspaceMode}
+            timingPanelOpen={timingPanelOpen}
+            onTimingPanelToggle={() => setTimingPanelOpen((open) => !open)}
           />
         </div>
         <button
@@ -209,201 +258,240 @@ export function Editor() {
           <CircuitDesigner />
         </div>
       ) : (
-        <div className="hidden flex-1 overflow-hidden md:flex">
-          <Resizable
-            direction="vertical"
-            defaultSizes={[75, 25]}
-            minSizes={[30, 15]}
-            maxSizes={[90, 70]}
-          >
-            <ResizablePanel className="h-full">
-              <Resizable
-                direction="horizontal"
-                defaultSizes={[18, 60, 22]}
-                minSizes={[10, 30, 15]}
-                maxSizes={[30, 80, 35]}
-              >
-                <ResizablePanel className="h-full">
-                  <Sidebar />
-                </ResizablePanel>
+        <div className="relative hidden flex-1 overflow-hidden md:flex">
+          <div className="min-w-0 flex-1">
+            <Resizable
+              direction="vertical"
+              defaultSizes={[75, 25]}
+              minSizes={[30, 15]}
+              maxSizes={[90, 70]}
+            >
+              <ResizablePanel className="h-full">
+                <Resizable
+                  direction="horizontal"
+                  defaultSizes={[18, 60, 22]}
+                  minSizes={[10, 30, 15]}
+                  maxSizes={[30, 80, 35]}
+                >
+                  <ResizablePanel className="h-full">
+                    <Sidebar />
+                  </ResizablePanel>
 
-                <ResizablePanel className="h-full">
+                  <ResizablePanel className="h-full">
+                    <div
+                      ref={splitContainerRef}
+                      className="relative h-full overflow-hidden"
+                      onDragOver={handleEditorDragOver}
+                      onDrop={handleEditorDrop}
+                      onDragLeave={(e) => {
+                        if (e.currentTarget === e.target) {
+                          setDropEdge(null);
+                        }
+                      }}
+                    >
+                      {splitFileId ? (
+                        <div
+                          className={`flex h-full w-full transition-all duration-200 ${splitDirection === "vertical" ? "flex-row" : "flex-col"}`}
+                        >
+                          <div
+                            className={`transition-all duration-200 ${splitDirection === "vertical" ? "h-full border-r" : "w-full border-b"}`}
+                            style={{
+                              borderColor: colorScheme.border,
+                              width:
+                                splitDirection === "vertical"
+                                  ? `${splitRatio}%`
+                                  : undefined,
+                              height:
+                                splitDirection === "horizontal"
+                                  ? `${splitRatio}%`
+                                  : undefined,
+                            }}
+                          >
+                            <CodeEditor
+                              fileIdOverride={activeFileId ?? undefined}
+                              onExternalFileDrop={replacePrimaryPaneFile}
+                            />
+                          </div>
+
+                          <div
+                            onMouseDown={() => setIsDraggingSplit(true)}
+                            className={`z-20 shrink-0 transition-colors ${splitDirection === "vertical" ? "h-full w-px cursor-col-resize" : "h-px w-full cursor-row-resize"}`}
+                            style={{
+                              backgroundColor: isDraggingSplit
+                                ? colorScheme.accent
+                                : colorScheme.border,
+                            }}
+                          />
+
+                          <div className="relative min-h-0 min-w-0 flex-1 transition-all duration-200">
+                            <div
+                              className="absolute top-2 right-2 z-20 flex items-center gap-1 rounded px-1 py-1"
+                              style={{
+                                backgroundColor: colorScheme.panel,
+                                border: `1px solid ${colorScheme.border}`,
+                              }}
+                            >
+                              <button
+                                onClick={() =>
+                                  setSplitDirection((prev) =>
+                                    prev === "vertical"
+                                      ? "horizontal"
+                                      : "vertical",
+                                  )
+                                }
+                                className="rounded px-1.5 py-0.5 text-[10px]"
+                                style={{ color: colorScheme.textMuted }}
+                                title="Toggle split direction"
+                              >
+                                {splitDirection === "vertical" ? "↕" : "↔"}
+                              </button>
+                              <button
+                                onClick={() => setSplitFileId(null)}
+                                className="rounded px-1.5 py-0.5 text-[10px]"
+                                style={{ color: colorScheme.textMuted }}
+                                title="Close split"
+                              >
+                                Close split
+                              </button>
+                            </div>
+                            <CodeEditor
+                              fileIdOverride={splitFileId}
+                              onExternalFileDrop={replaceSecondaryPaneFile}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <CodeEditor />
+                      )}
+
+                      {dropEdge && (
+                        <div className="pointer-events-none absolute inset-0 z-30 p-2">
+                          <div
+                            className="relative h-full w-full rounded border-2 border-dashed p-1.5"
+                            style={{ borderColor: colorScheme.accent }}
+                          >
+                            <div
+                              className="absolute inset-y-1.5 left-1.5 flex w-[22%] items-center justify-center rounded text-[11px] font-medium"
+                              style={{
+                                color: colorScheme.text,
+                                backgroundColor:
+                                  dropEdge === "left"
+                                    ? `${colorScheme.accent}33`
+                                    : `${colorScheme.panel}cc`,
+                                border: `1px solid ${
+                                  dropEdge === "left"
+                                    ? colorScheme.accent
+                                    : colorScheme.border
+                                }`,
+                              }}
+                            >
+                              Left
+                            </div>
+                            <div
+                              className="absolute inset-y-1.5 right-1.5 flex w-[22%] items-center justify-center rounded text-[11px] font-medium"
+                              style={{
+                                color: colorScheme.text,
+                                backgroundColor:
+                                  dropEdge === "right"
+                                    ? `${colorScheme.accent}33`
+                                    : `${colorScheme.panel}cc`,
+                                border: `1px solid ${
+                                  dropEdge === "right"
+                                    ? colorScheme.accent
+                                    : colorScheme.border
+                                }`,
+                              }}
+                            >
+                              Right
+                            </div>
+                            <div
+                              className="absolute inset-x-[24%] top-1.5 flex h-[22%] items-center justify-center rounded text-[11px] font-medium"
+                              style={{
+                                color: colorScheme.text,
+                                backgroundColor:
+                                  dropEdge === "top"
+                                    ? `${colorScheme.accent}33`
+                                    : `${colorScheme.panel}cc`,
+                                border: `1px solid ${
+                                  dropEdge === "top"
+                                    ? colorScheme.accent
+                                    : colorScheme.border
+                                }`,
+                              }}
+                            >
+                              Top
+                            </div>
+                            <div
+                              className="absolute inset-x-[24%] bottom-1.5 flex h-[22%] items-center justify-center rounded text-[11px] font-medium"
+                              style={{
+                                color: colorScheme.text,
+                                backgroundColor:
+                                  dropEdge === "bottom"
+                                    ? `${colorScheme.accent}33`
+                                    : `${colorScheme.panel}cc`,
+                                border: `1px solid ${
+                                  dropEdge === "bottom"
+                                    ? colorScheme.accent
+                                    : colorScheme.border
+                                }`,
+                              }}
+                            >
+                              Bottom
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </ResizablePanel>
+
+                  <ResizablePanel className="h-full">
+                    <RegistersPanel />
+                  </ResizablePanel>
+                </Resizable>
+              </ResizablePanel>
+
+              <ResizablePanel className="h-full">
+                <MemoryPanel />
+              </ResizablePanel>
+            </Resizable>
+          </div>
+          <AnimatePresence initial={false}>
+            {architecture === "8085" && timingPanelOpen ? (
+              <React.Fragment key="timing-panel-group">
+                <div
+                  className="group flex h-full w-1.5 shrink-0 cursor-col-resize items-center justify-center"
+                  onMouseDown={() => setIsResizingTiming(true)}
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Resize timing panel"
+                >
                   <div
-                    ref={splitContainerRef}
-                    className="relative h-full overflow-hidden"
-                    onDragOver={handleEditorDragOver}
-                    onDrop={handleEditorDrop}
-                    onDragLeave={(e) => {
-                      if (e.currentTarget === e.target) {
-                        setDropEdge(null);
-                      }
+                    className="h-12 w-px transition-colors group-hover:w-0.5"
+                    style={{
+                      backgroundColor: isResizingTiming
+                        ? colorScheme.accent
+                        : colorScheme.border,
                     }}
-                  >
-                    {splitFileId ? (
-                      <div
-                        className={`flex h-full w-full transition-all duration-200 ${splitDirection === "vertical" ? "flex-row" : "flex-col"}`}
-                      >
-                        <div
-                          className={`transition-all duration-200 ${splitDirection === "vertical" ? "h-full border-r" : "w-full border-b"}`}
-                          style={{
-                            borderColor: colorScheme.border,
-                            width:
-                              splitDirection === "vertical"
-                                ? `${splitRatio}%`
-                                : undefined,
-                            height:
-                              splitDirection === "horizontal"
-                                ? `${splitRatio}%`
-                                : undefined,
-                          }}
-                        >
-                          <CodeEditor
-                            fileIdOverride={activeFileId ?? undefined}
-                            onExternalFileDrop={replacePrimaryPaneFile}
-                          />
-                        </div>
-
-                        <div
-                          onMouseDown={() => setIsDraggingSplit(true)}
-                          className={`z-20 shrink-0 transition-colors ${splitDirection === "vertical" ? "h-full w-px cursor-col-resize" : "h-px w-full cursor-row-resize"}`}
-                          style={{
-                            backgroundColor: isDraggingSplit
-                              ? colorScheme.accent
-                              : colorScheme.border,
-                          }}
-                        />
-
-                        <div className="relative min-h-0 min-w-0 flex-1 transition-all duration-200">
-                          <div
-                            className="absolute top-2 right-2 z-20 flex items-center gap-1 rounded px-1 py-1"
-                            style={{
-                              backgroundColor: colorScheme.panel,
-                              border: `1px solid ${colorScheme.border}`,
-                            }}
-                          >
-                            <button
-                              onClick={() =>
-                                setSplitDirection((prev) =>
-                                  prev === "vertical"
-                                    ? "horizontal"
-                                    : "vertical",
-                                )
-                              }
-                              className="rounded px-1.5 py-0.5 text-[10px]"
-                              style={{ color: colorScheme.textMuted }}
-                              title="Toggle split direction"
-                            >
-                              {splitDirection === "vertical" ? "↕" : "↔"}
-                            </button>
-                            <button
-                              onClick={() => setSplitFileId(null)}
-                              className="rounded px-1.5 py-0.5 text-[10px]"
-                              style={{ color: colorScheme.textMuted }}
-                              title="Close split"
-                            >
-                              Close split
-                            </button>
-                          </div>
-                          <CodeEditor
-                            fileIdOverride={splitFileId}
-                            onExternalFileDrop={replaceSecondaryPaneFile}
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <CodeEditor />
-                    )}
-
-                    {dropEdge && (
-                      <div className="pointer-events-none absolute inset-0 z-30 p-2">
-                        <div
-                          className="relative h-full w-full rounded border-2 border-dashed p-1.5"
-                          style={{ borderColor: colorScheme.accent }}
-                        >
-                          <div
-                            className="absolute inset-y-1.5 left-1.5 flex w-[22%] items-center justify-center rounded text-[11px] font-medium"
-                            style={{
-                              color: colorScheme.text,
-                              backgroundColor:
-                                dropEdge === "left"
-                                  ? `${colorScheme.accent}33`
-                                  : `${colorScheme.panel}cc`,
-                              border: `1px solid ${
-                                dropEdge === "left"
-                                  ? colorScheme.accent
-                                  : colorScheme.border
-                              }`,
-                            }}
-                          >
-                            Left
-                          </div>
-                          <div
-                            className="absolute inset-y-1.5 right-1.5 flex w-[22%] items-center justify-center rounded text-[11px] font-medium"
-                            style={{
-                              color: colorScheme.text,
-                              backgroundColor:
-                                dropEdge === "right"
-                                  ? `${colorScheme.accent}33`
-                                  : `${colorScheme.panel}cc`,
-                              border: `1px solid ${
-                                dropEdge === "right"
-                                  ? colorScheme.accent
-                                  : colorScheme.border
-                              }`,
-                            }}
-                          >
-                            Right
-                          </div>
-                          <div
-                            className="absolute inset-x-[24%] top-1.5 flex h-[22%] items-center justify-center rounded text-[11px] font-medium"
-                            style={{
-                              color: colorScheme.text,
-                              backgroundColor:
-                                dropEdge === "top"
-                                  ? `${colorScheme.accent}33`
-                                  : `${colorScheme.panel}cc`,
-                              border: `1px solid ${
-                                dropEdge === "top"
-                                  ? colorScheme.accent
-                                  : colorScheme.border
-                              }`,
-                            }}
-                          >
-                            Top
-                          </div>
-                          <div
-                            className="absolute inset-x-[24%] bottom-1.5 flex h-[22%] items-center justify-center rounded text-[11px] font-medium"
-                            style={{
-                              color: colorScheme.text,
-                              backgroundColor:
-                                dropEdge === "bottom"
-                                  ? `${colorScheme.accent}33`
-                                  : `${colorScheme.panel}cc`,
-                              border: `1px solid ${
-                                dropEdge === "bottom"
-                                  ? colorScheme.accent
-                                  : colorScheme.border
-                              }`,
-                            }}
-                          >
-                            Bottom
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                  />
+                </div>
+                <motion.div
+                  key="timing-panel"
+                  initial={{ width: 0, opacity: 0, x: 24 }}
+                  animate={{ width: timingPanelWidth, opacity: 1, x: 0 }}
+                  exit={{ width: 0, opacity: 0, x: 24 }}
+                  transition={{
+                    duration: isResizingTiming ? 0 : 0.2,
+                    ease: "easeOut",
+                  }}
+                  className={`min-w-0 overflow-hidden ${layoutMode === "compact" ? "ml-0" : "ml-1"}`}
+                >
+                  <div className="h-full" style={{ width: timingPanelWidth }}>
+                    <TimingPanel />
                   </div>
-                </ResizablePanel>
-
-                <ResizablePanel className="h-full">
-                  <RegistersPanel />
-                </ResizablePanel>
-              </Resizable>
-            </ResizablePanel>
-
-            <ResizablePanel className="h-full">
-              <MemoryPanel />
-            </ResizablePanel>
-          </Resizable>
+                </motion.div>
+              </React.Fragment>
+            ) : null}
+          </AnimatePresence>
         </div>
       )}
 
@@ -491,6 +579,24 @@ export function Editor() {
                   >
                     Memory
                   </button>
+                  {architecture === "8085" ? (
+                    <button
+                      onClick={() => setActiveMobilePanel("timing")}
+                      className="rounded px-3 py-1.5 text-sm font-medium transition"
+                      style={{
+                        backgroundColor:
+                          activeMobilePanel === "timing"
+                            ? colorScheme.active
+                            : "transparent",
+                        color:
+                          activeMobilePanel === "timing"
+                            ? colorScheme.text
+                            : colorScheme.textMuted,
+                      }}
+                    >
+                      Timing
+                    </button>
+                  ) : null}
                 </div>
                 <button
                   onClick={() => setMobilePanelOpen(false)}
@@ -516,7 +622,7 @@ export function Editor() {
                   min="1"
                   max="5000"
                   step="50"
-                  value={execution.delay}
+                  value={delay}
                   onChange={(e) => setDelay(Number(e.target.value))}
                   className="flex-1 accent-current"
                   style={{ accentColor: colorScheme.accent }}
@@ -525,15 +631,16 @@ export function Editor() {
                   className="w-12 text-right text-xs"
                   style={{ color: colorScheme.textMuted }}
                 >
-                  {execution.delay >= 1000
-                    ? `${(execution.delay / 1000).toFixed(1)}s`
-                    : `${execution.delay}ms`}
+                  {delay >= 1000
+                    ? `${(delay / 1000).toFixed(1)}s`
+                    : `${delay}ms`}
                 </span>
               </div>
 
               <div className="min-h-0 flex-1 overflow-hidden">
                 {activeMobilePanel === "registers" && <RegistersPanel />}
                 {activeMobilePanel === "memory" && <MemoryPanel />}
+                {activeMobilePanel === "timing" && <TimingPanel />}
               </div>
             </motion.div>
           </>

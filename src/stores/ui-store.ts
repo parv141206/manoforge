@@ -5,6 +5,7 @@ import { persist } from "zustand/middleware";
 
 export type LayoutMode = "floating" | "compact";
 export type ExecutionLogMode = "detailed" | "instruction";
+export type DebugStepMode = "instruction" | "machine-cycle";
 export type EditorFontFamily =
   | "monaspaceArgon"
   | "monaspaceKrypton"
@@ -39,11 +40,13 @@ export const editorFontOptions: Array<{
 interface UiStore {
   layoutMode: LayoutMode;
   executionLogMode: ExecutionLogMode;
+  debugStepMode: DebugStepMode;
   editorFontFamily: EditorFontFamily;
   editorFontSize: number;
   tabSize: number;
   setLayoutMode: (mode: LayoutMode) => void;
   setExecutionLogMode: (mode: ExecutionLogMode) => void;
+  setDebugStepMode: (mode: DebugStepMode) => void;
   setEditorFontFamily: (font: EditorFontFamily) => void;
   setEditorFontSize: (size: number) => void;
   setTabSize: (size: number) => void;
@@ -52,13 +55,15 @@ interface UiStore {
 export const useUiStore = create<UiStore>()(
   persist(
     (set) => ({
-      layoutMode: "floating",
+      layoutMode: "compact",
       executionLogMode: "detailed",
+      debugStepMode: "instruction",
       editorFontFamily: "monaspaceKrypton",
       editorFontSize: 14,
       tabSize: 4,
       setLayoutMode: (mode) => set({ layoutMode: mode }),
       setExecutionLogMode: (mode) => set({ executionLogMode: mode }),
+      setDebugStepMode: (mode) => set({ debugStepMode: mode }),
       setEditorFontFamily: (font) => set({ editorFontFamily: font }),
       setEditorFontSize: (size) =>
         set({ editorFontSize: Math.min(24, Math.max(11, size)) }),

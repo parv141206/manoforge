@@ -8,6 +8,7 @@ import {
   memorySizeForArchitecture,
   type Architecture,
 } from "@/lib/architectures";
+import type { I8085TimingTrace } from "@/lib/8085/timing";
 
 export interface FileItem {
   id: string;
@@ -29,6 +30,22 @@ export interface ExecutionState {
   machineCode: string[];
   addressToLine: Record<number, number>;
   addressInfo: Record<number, AddressInfo>;
+  i8085Timing: I8085TimingTrace | null;
+  i8085ActiveCycle: number | null;
+  i8085History: I8085DebugRecord[];
+  i8085Cursor: number;
+  executionComplete: boolean;
+}
+
+export interface I8085DebugRecord {
+  instruction: string;
+  address: number;
+  beforeRegisters: Registers;
+  afterRegisters: Registers;
+  memoryChanges: { address: number; before: number; after: number }[];
+  portChanges: { port: number; before: number; after: number }[];
+  timing: I8085TimingTrace;
+  halted: boolean;
 }
 
 export interface Registers {
@@ -94,10 +111,14 @@ export interface FileStore {
   setAssembled: (isAssembled: boolean) => void;
   setCurrentLine: (line: number | null) => void;
   addNotation: (notation: string) => void;
+  addNotations: (notations: string[]) => void;
   clearNotations: () => void;
   setMachineCode: (code: string[]) => void;
   setAddressToLine: (mapping: Record<number, number>) => void;
   setAddressInfo: (info: Record<number, AddressInfo>) => void;
+  set8085Timing: (timing: I8085TimingTrace | null) => void;
+  set8085ActiveCycle: (cycle: number | null) => void;
+  setExecutionComplete: (complete: boolean) => void;
 
   setRegister: (key: keyof Registers, value: number) => void;
   resetRegisters: () => void;
@@ -109,6 +130,15 @@ export interface FileStore {
   resetExecution: () => void;
   setArchitecture: (architecture: Architecture) => void;
   setPort: (port: number, value: number) => void;
+  apply8085Step: (
+    registers: Partial<Registers>,
+    memoryWrites: { address: number; value: number }[],
+    portWrites: { port: number; value: number }[],
+    timing: I8085TimingTrace,
+    halted?: boolean,
+  ) => void;
+  step8085Backward: () => void;
+  step8085Forward: () => void;
 }
 
 const defaultRegisters: Registers = {
@@ -188,9 +218,15 @@ export const useFileStore = create<FileStore>()(
           content:
             "LDA NUM\nADD ONE\nSTA RESULT\nHLT\n\nNUM, DEC 5\nONE, DEC 1\nRESULT, DEC 0\nEND",
         },
+        {
+          id: "default-8085-file",
+          name: "sample.a85",
+          content:
+            "ORG 2000H\nMVI A, 05H\nMVI B, 03H\nADD B\nSTA 3000H\nHLT\nEND",
+        },
       ],
       activeFileId: "default-file",
-      openFileIds: ["default-file"],
+      openFileIds: ["default-file", "default-8085-file"],
       memory: new Array<number>(4096).fill(0),
       ports: new Array<number>(256).fill(0),
       registers: { ...defaultRegisters },
@@ -203,6 +239,11 @@ export const useFileStore = create<FileStore>()(
         machineCode: [],
         addressToLine: {},
         addressInfo: {},
+        i8085Timing: null,
+        i8085ActiveCycle: null,
+        i8085History: [],
+        i8085Cursor: 0,
+        executionComplete: false,
       },
 
       createFile: (name) => {
@@ -278,6 +319,11 @@ export const useFileStore = create<FileStore>()(
             ...state.execution,
             isAssembled: false,
             currentLine: null,
+            i8085Timing: null,
+            i8085ActiveCycle: null,
+            i8085History: [],
+            i8085Cursor: 0,
+            executionComplete: false,
           },
         }));
       },
@@ -312,6 +358,11 @@ export const useFileStore = create<FileStore>()(
                   machineCode: [],
                   addressToLine: {},
                   addressInfo: {},
+                  i8085Timing: null,
+                  i8085ActiveCycle: null,
+                  i8085History: [],
+                  i8085Cursor: 0,
+                  executionComplete: false,
                 }
               : {
                   ...state.execution,
@@ -482,6 +533,16 @@ export const useFileStore = create<FileStore>()(
         }));
       },
 
+      addNotations: (notations) => {
+        if (notations.length === 0) return;
+        set((state) => ({
+          execution: {
+            ...state.execution,
+            notations: [...state.execution.notations, ...notations],
+          },
+        }));
+      },
+
       clearNotations: () => {
         set((state) => ({ execution: { ...state.execution, notations: [] } }));
       },
@@ -501,6 +562,24 @@ export const useFileStore = create<FileStore>()(
       setAddressInfo: (info) => {
         set((state) => ({
           execution: { ...state.execution, addressInfo: info },
+        }));
+      },
+
+      set8085Timing: (i8085Timing) => {
+        set((state) => ({
+          execution: { ...state.execution, i8085Timing },
+        }));
+      },
+
+      set8085ActiveCycle: (i8085ActiveCycle) => {
+        set((state) => ({
+          execution: { ...state.execution, i8085ActiveCycle },
+        }));
+      },
+
+      setExecutionComplete: (executionComplete) => {
+        set((state) => ({
+          execution: { ...state.execution, executionComplete },
         }));
       },
 
@@ -558,6 +637,11 @@ export const useFileStore = create<FileStore>()(
             machineCode: [],
             addressToLine: {},
             addressInfo: {},
+            i8085Timing: null,
+            i8085ActiveCycle: null,
+            i8085History: [],
+            i8085Cursor: 0,
+            executionComplete: false,
           },
         });
       },
@@ -580,6 +664,11 @@ export const useFileStore = create<FileStore>()(
             machineCode: [],
             addressToLine: {},
             addressInfo: {},
+            i8085Timing: null,
+            i8085ActiveCycle: null,
+            i8085History: [],
+            i8085Cursor: 0,
+            executionComplete: false,
           },
         });
       },
@@ -591,9 +680,147 @@ export const useFileStore = create<FileStore>()(
           return { ports };
         });
       },
+
+      apply8085Step: (
+        registers,
+        memoryWrites,
+        portWrites,
+        timing,
+        halted = false,
+      ) => {
+        set((state) => {
+          const memory = [...state.memory];
+          const ports = [...state.ports];
+          const memoryChanges = memoryWrites.map((write) => ({
+            address: write.address & 0xffff,
+            before: state.memory[write.address & 0xffff] ?? 0,
+            after: write.value & 0xff,
+          }));
+          const portChanges = portWrites.map((write) => ({
+            port: write.port & 0xff,
+            before: state.ports[write.port & 0xff] ?? 0,
+            after: write.value & 0xff,
+          }));
+          for (const write of memoryWrites) {
+            memory[write.address & 0xffff] = write.value & 0xff;
+          }
+          for (const write of portWrites) {
+            ports[write.port & 0xff] = write.value & 0xff;
+          }
+          const afterRegisters = { ...state.registers, ...registers };
+          const record: I8085DebugRecord = {
+            instruction: timing.instruction,
+            address: timing.address,
+            beforeRegisters: { ...state.registers },
+            afterRegisters,
+            memoryChanges,
+            portChanges,
+            timing,
+            halted,
+          };
+          const history = [
+            ...state.execution.i8085History.slice(
+              0,
+              state.execution.i8085Cursor,
+            ),
+            record,
+          ];
+          return {
+            registers: afterRegisters,
+            memory,
+            ports,
+            execution: {
+              ...state.execution,
+              i8085Timing: timing,
+              i8085ActiveCycle: null,
+              i8085History: history,
+              i8085Cursor: history.length,
+              executionComplete: halted,
+            },
+          };
+        });
+      },
+
+      step8085Backward: () => {
+        set((state) => {
+          const cursor = state.execution.i8085Cursor;
+          if (cursor <= 0) return state;
+          const record = state.execution.i8085History[cursor - 1];
+          if (!record) return state;
+          const memory = [...state.memory];
+          const ports = [...state.ports];
+          for (const change of record.memoryChanges) {
+            memory[change.address] = change.before;
+          }
+          for (const change of record.portChanges) {
+            ports[change.port] = change.before;
+          }
+          const nextCursor = cursor - 1;
+          return {
+            registers: { ...record.beforeRegisters },
+            memory,
+            ports,
+            execution: {
+              ...state.execution,
+              isRunning: false,
+              currentLine: record.address,
+              i8085Cursor: nextCursor,
+              i8085ActiveCycle: null,
+              executionComplete: false,
+              i8085Timing:
+                nextCursor > 0
+                  ? (state.execution.i8085History[nextCursor - 1]?.timing ??
+                    null)
+                  : null,
+            },
+          };
+        });
+      },
+
+      step8085Forward: () => {
+        set((state) => {
+          const cursor = state.execution.i8085Cursor;
+          const record = state.execution.i8085History[cursor];
+          if (!record) return state;
+          const memory = [...state.memory];
+          const ports = [...state.ports];
+          for (const change of record.memoryChanges) {
+            memory[change.address] = change.after;
+          }
+          for (const change of record.portChanges) {
+            ports[change.port] = change.after;
+          }
+          return {
+            registers: { ...record.afterRegisters },
+            memory,
+            ports,
+            execution: {
+              ...state.execution,
+              currentLine: record.address,
+              i8085Cursor: cursor + 1,
+              i8085Timing: record.timing,
+              i8085ActiveCycle: null,
+              executionComplete: record.halted,
+            },
+          };
+        });
+      },
     }),
     {
       name: "mano-forge-storage",
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<FileStore> & {
+          execution?: Partial<ExecutionState>;
+        };
+        return {
+          ...currentState,
+          ...persisted,
+          execution: {
+            ...currentState.execution,
+            ...persisted.execution,
+          },
+        };
+      },
       partialize: (state) => ({
         files: state.files,
         activeFileId: state.activeFileId,

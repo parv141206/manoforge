@@ -12,6 +12,10 @@ import {
   VscDebugPause,
   VscBook,
   VscCircuitBoard,
+  VscDebug,
+  VscDebugStepBack,
+  VscDebugContinueSmall,
+  VscPulse,
 } from "react-icons/vsc";
 import { TbAssembly } from "react-icons/tb";
 import { DocsModal } from "./docs-modal";
@@ -20,7 +24,12 @@ import { Parser } from "@/lib/parser";
 import { Assembler } from "@/lib/assembler";
 import { tokenize } from "@/lib/tokenizer";
 import { I8085Assembler } from "@/lib/8085/assembler";
-import { step8085, type I8085Registers } from "@/lib/8085/cpu";
+import {
+  step8085,
+  type I8085Registers,
+  type I8085StepResult,
+} from "@/lib/8085/cpu";
+import { useShallow } from "zustand/react/shallow";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -29,14 +38,25 @@ type WorkspaceMode = "assembly" | "circuit";
 type HeaderProps = {
   workspaceMode: WorkspaceMode;
   onWorkspaceModeChange: (mode: WorkspaceMode) => void;
+  timingPanelOpen: boolean;
+  onTimingPanelToggle: () => void;
 };
 
-export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
+export function Header({
+  workspaceMode,
+  onWorkspaceModeChange,
+  timingPanelOpen,
+  onTimingPanelToggle,
+}: HeaderProps) {
   const {
-    files,
     activeFileId,
     architecture,
-    execution,
+    isRunning,
+    isAssembled,
+    delay,
+    debugCursor,
+    debugHistoryLength,
+    executionComplete,
     setDelay,
     setRunning,
     setAssembled,
@@ -44,23 +64,71 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
     setMachineCode,
     setAddressToLine,
     setAddressInfo,
+    set8085Timing,
+    set8085ActiveCycle,
+    setExecutionComplete,
     setMemoryWord,
     setMemoryBulk,
-    setPort,
     setRegister,
     addNotation,
+    apply8085Step,
+    step8085Backward,
+    step8085Forward,
     clearNotations,
     resetExecution,
     setArchitecture,
-  } = useFileStore();
+  } = useFileStore(
+    useShallow((state) => ({
+      activeFileId: state.activeFileId,
+      architecture: state.architecture,
+      isRunning: state.execution.isRunning,
+      isAssembled: state.execution.isAssembled,
+      delay: state.execution.delay,
+      debugCursor: state.execution.i8085Cursor,
+      debugHistoryLength: state.execution.i8085History?.length ?? 0,
+      executionComplete: state.execution.executionComplete,
+      setDelay: state.setDelay,
+      setRunning: state.setRunning,
+      setAssembled: state.setAssembled,
+      setCurrentLine: state.setCurrentLine,
+      setMachineCode: state.setMachineCode,
+      setAddressToLine: state.setAddressToLine,
+      setAddressInfo: state.setAddressInfo,
+      set8085Timing: state.set8085Timing,
+      set8085ActiveCycle: state.set8085ActiveCycle,
+      setExecutionComplete: state.setExecutionComplete,
+      setMemoryWord: state.setMemoryWord,
+      setMemoryBulk: state.setMemoryBulk,
+      setRegister: state.setRegister,
+      addNotation: state.addNotation,
+      apply8085Step: state.apply8085Step,
+      step8085Backward: state.step8085Backward,
+      step8085Forward: state.step8085Forward,
+      clearNotations: state.clearNotations,
+      resetExecution: state.resetExecution,
+      setArchitecture: state.setArchitecture,
+    })),
+  );
 
   const { colorScheme } = useThemeStore();
-  const { layoutMode, executionLogMode } = useUiStore();
+  const { layoutMode, executionLogMode, debugStepMode, setDebugStepMode } =
+    useUiStore(
+      useShallow((state) => ({
+        layoutMode: state.layoutMode,
+        executionLogMode: state.executionLogMode,
+        debugStepMode: state.debugStepMode,
+        setDebugStepMode: state.setDebugStepMode,
+      })),
+    );
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [showDocsModal, setShowDocsModal] = useState(false);
+  const [debugMode, setDebugMode] = useState(false);
+  const [hasPendingCycle, setHasPendingCycle] = useState(false);
   const executorRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isExecutingRef = useRef(false);
   const stopRequestedRef = useRef(false);
+  const pending8085StepRef = useRef<I8085StepResult | null>(null);
+  const pendingCycleIndexRef = useRef<number | null>(null);
 
   useEffect(() => {
     const intervalId = executorRef.current;
@@ -69,9 +137,20 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
     };
   }, []);
 
-  const activeFile = files.find((f) => f.id === activeFileId);
+  useEffect(() => {
+    if (architecture !== "8085") {
+      setDebugMode(false);
+      pending8085StepRef.current = null;
+      pendingCycleIndexRef.current = null;
+      set8085ActiveCycle(null);
+    }
+  }, [architecture, set8085ActiveCycle]);
 
-  const emitAssembleError = (error: unknown) => {
+  const emitAssembleError = (
+    error: unknown,
+    source: string,
+    fileName: string,
+  ) => {
     const fallback = error instanceof Error ? error.message : "Assembly failed";
     addNotation(`Error: ${fallback}`);
 
@@ -86,23 +165,32 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
       return;
     }
 
-    const source = activeFile?.content ?? "";
     const lines = source.split("\n");
     const lineText = lines[maybe.line - 1] ?? "";
     const pointer = " ".repeat(Math.max(0, maybe.column - 1)) + "^";
 
-    addNotation(
-      ` --> ${maybe.file ?? activeFile?.name ?? "program.asm"}:${maybe.line}:${maybe.column}`,
-    );
+    addNotation(` --> ${maybe.file ?? fileName}:${maybe.line}:${maybe.column}`);
     addNotation("  |");
     addNotation(`${maybe.line} | ${lineText}`);
     addNotation(`  | ${pointer}`);
   };
 
+  const clearPending8085Step = () => {
+    pending8085StepRef.current = null;
+    pendingCycleIndexRef.current = null;
+    setHasPendingCycle(false);
+    set8085ActiveCycle(null);
+  };
+
   const assembleActiveFile = () => {
+    const state = useFileStore.getState();
+    const activeFile = state.files.find(
+      (file) => file.id === state.activeFileId,
+    );
     if (!activeFile) return false;
 
     try {
+      clearPending8085Step();
       resetExecution();
       clearNotations();
       if (architecture === "8085") {
@@ -187,7 +275,7 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
       addNotation(`Assembled successfully: ${machineCodeStrings.length} words`);
       return true;
     } catch (error) {
-      emitAssembleError(error);
+      emitAssembleError(error, activeFile.content, activeFile.name);
       setAssembled(false);
       return false;
     }
@@ -254,36 +342,29 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
       const pc = state.registers.PC;
 
       if (state.architecture === "8085") {
+        if (!state.execution.addressInfo[pc]?.instruction) {
+          setExecutionComplete(true);
+          setRunning(false);
+          return false;
+        }
         setCurrentLine(pc);
         const result = step8085(
           state.registers as I8085Registers,
           state.memory,
           state.ports,
         );
-        for (const key of Object.keys(
+        apply8085Step(
           result.registers,
-        ) as (keyof I8085Registers)[]) {
-          setRegister(
-            key as keyof typeof state.registers,
-            result.registers[key],
-          );
-        }
-        setMemoryBulk(result.memoryWrites);
-        for (const write of result.portWrites) {
-          setPort(write.port, write.value);
-        }
-        const messages = detailedMode
-          ? result.notations
-          : [
-              `${result.instruction} => PC=${toHex(result.registers.PC, 4)}, A=${toHex(result.registers.A, 2)}`,
-            ];
-        for (const message of messages) {
-          if (!(await noteInstruction(message))) return false;
-        }
-        if (detailedMode) addNotation("────────────────────");
+          result.memoryWrites,
+          result.portWrites,
+          result.timing,
+          result.halted,
+        );
+        if (delay > 0) await sleep(delay);
+        if (stopRequestedRef.current) return false;
         if (result.halted) {
+          setExecutionComplete(true);
           setRunning(false);
-          addNotation("HLT: Execution halted");
           return false;
         }
         return true;
@@ -595,7 +676,7 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
   };
 
   const handleRun = async () => {
-    if (execution.isRunning || isExecutingRef.current) {
+    if (isRunning || isExecutingRef.current) {
       stopRequestedRef.current = true;
       setRunning(false);
       return;
@@ -609,7 +690,7 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
 
     const runLoop = async () => {
       while (!stopRequestedRef.current) {
-        const shouldContinue = await executeStep(execution.delay);
+        const shouldContinue = await executeStep(delay);
         if (!shouldContinue) break;
       }
       isExecutingRef.current = false;
@@ -619,23 +700,114 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
     void runLoop();
   };
 
+  const commit8085Step = (result: I8085StepResult) => {
+    apply8085Step(
+      result.registers,
+      result.memoryWrites,
+      result.portWrites,
+      result.timing,
+      result.halted,
+    );
+    if (result.halted) setExecutionComplete(true);
+  };
+
+  const handle8085MachineCycleStep = () => {
+    const pending = pending8085StepRef.current;
+    const currentCycle = pendingCycleIndexRef.current;
+
+    if (!pending || currentCycle === null) {
+      const state = useFileStore.getState();
+      const pc = state.registers.PC;
+      if (!state.execution.addressInfo[pc]?.instruction) {
+        setExecutionComplete(true);
+        return;
+      }
+      const result = step8085(
+        state.registers as I8085Registers,
+        state.memory,
+        state.ports,
+      );
+      setCurrentLine(pc);
+      set8085Timing(result.timing);
+      if (result.timing.machineCycles.length <= 1) {
+        commit8085Step(result);
+        set8085ActiveCycle(0);
+        return;
+      }
+      pending8085StepRef.current = result;
+      pendingCycleIndexRef.current = 0;
+      setHasPendingCycle(true);
+      set8085ActiveCycle(0);
+      return;
+    }
+
+    const nextCycle = currentCycle + 1;
+    if (nextCycle >= pending.timing.machineCycles.length - 1) {
+      pending8085StepRef.current = null;
+      pendingCycleIndexRef.current = null;
+      setHasPendingCycle(false);
+      commit8085Step(pending);
+      set8085ActiveCycle(nextCycle);
+      return;
+    }
+    pendingCycleIndexRef.current = nextCycle;
+    set8085ActiveCycle(nextCycle);
+  };
+
   const handleStep = async () => {
-    if (!execution.isAssembled) return;
+    if (!isAssembled) return;
     if (isExecutingRef.current) return;
+    if (architecture === "8085" && debugCursor < debugHistoryLength) {
+      clearPending8085Step();
+      step8085Forward();
+      return;
+    }
+    if (
+      architecture === "8085" &&
+      debugMode &&
+      debugStepMode === "machine-cycle"
+    ) {
+      handle8085MachineCycleStep();
+      return;
+    }
     isExecutingRef.current = true;
-    await executeStep(execution.delay);
+    await executeStep(delay);
     isExecutingRef.current = false;
+  };
+
+  const handleDebugBack = () => {
+    if (isRunning) return;
+    if (pending8085StepRef.current) {
+      clearPending8085Step();
+      return;
+    }
+    if (debugCursor <= 0) return;
+    step8085Backward();
+  };
+
+  const handleDebugForward = () => {
+    if (isRunning || debugCursor >= debugHistoryLength) return;
+    step8085Forward();
+  };
+
+  const toggleDebugMode = () => {
+    stopRequestedRef.current = true;
+    isExecutingRef.current = false;
+    setRunning(false);
+    clearPending8085Step();
+    setDebugMode((enabled) => !enabled);
   };
 
   const handleReset = () => {
     stopRequestedRef.current = true;
     isExecutingRef.current = false;
+    clearPending8085Step();
     resetExecution();
   };
 
   return (
     <div
-      className={`flex h-full items-center justify-between px-2 sm:px-4 ${layoutMode === "compact" ? "rounded-none" : "rounded-lg"}`}
+      className={`flex h-full min-w-0 items-center justify-start gap-1 overflow-x-auto px-1.5 sm:justify-between sm:overflow-visible sm:px-4 ${layoutMode === "compact" ? "rounded-none" : "rounded-lg"}`}
       style={{
         backgroundColor: colorScheme.sidebar,
         border:
@@ -644,7 +816,7 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
             : `1px solid ${colorScheme.border}`,
       }}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
         <h1
           className="font-title hidden text-lg font-bold tracking-wide sm:block"
           style={{ color: colorScheme.accent }}
@@ -742,7 +914,7 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
         )}
       </div>
 
-      <div className="flex items-center gap-1 sm:gap-2">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         {workspaceMode === "assembly" && (
           <>
             <div className="mr-4 hidden items-center gap-1 sm:flex">
@@ -757,7 +929,7 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
                 min="1"
                 max="5000"
                 step="50"
-                value={execution.delay}
+                value={delay}
                 onChange={(e) => setDelay(Number(e.target.value))}
                 className="w-20 accent-current"
                 style={{ accentColor: colorScheme.accent }}
@@ -766,7 +938,7 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
                 className="w-14 text-xs"
                 style={{ color: colorScheme.textMuted }}
               >
-                {execution.delay}ms
+                {delay}ms
               </span>
             </div>
 
@@ -785,37 +957,159 @@ export function Header({ workspaceMode, onWorkspaceModeChange }: HeaderProps) {
 
             <button
               onClick={handleRun}
-              disabled={!activeFile}
+              disabled={!activeFileId}
               className="flex items-center gap-1 rounded p-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-40 sm:gap-1.5 sm:px-3 sm:py-1.5"
               style={{
-                backgroundColor: execution.isRunning ? "#ef4444" : "#22c55e",
+                backgroundColor: isRunning ? "#ef4444" : "#22c55e",
                 color: "#fff",
               }}
-              title={execution.isRunning ? "Pause" : "Run"}
+              title={isRunning ? "Pause" : "Run"}
             >
-              {execution.isRunning ? (
+              {isRunning ? (
                 <VscDebugPause size={16} />
               ) : (
                 <VscDebugStart size={16} />
               )}
               <span className="hidden sm:inline">
-                {execution.isRunning ? "Pause" : "Run"}
+                {isRunning ? "Pause" : "Run"}
               </span>
             </button>
 
+            {architecture === "8085" ? (
+              <button
+                onClick={toggleDebugMode}
+                className="flex items-center gap-1 rounded p-2 text-sm font-medium transition-colors sm:gap-1.5 sm:px-3 sm:py-1.5"
+                style={{
+                  backgroundColor: debugMode
+                    ? `${colorScheme.accent}28`
+                    : colorScheme.hover,
+                  color: debugMode ? colorScheme.accent : colorScheme.text,
+                  border: `1px solid ${
+                    debugMode ? colorScheme.accent : "transparent"
+                  }`,
+                }}
+                title="Toggle reversible debug mode"
+              >
+                <VscDebug size={16} />
+                <span className="hidden lg:inline">Debug</span>
+              </button>
+            ) : null}
+
+            {architecture === "8085" ? (
+              <button
+                onClick={onTimingPanelToggle}
+                className="hidden items-center gap-1 rounded p-2 text-sm font-medium transition-colors sm:px-2.5 sm:py-1.5 md:flex"
+                style={{
+                  backgroundColor: timingPanelOpen
+                    ? `${colorScheme.accent}28`
+                    : colorScheme.hover,
+                  color: timingPanelOpen
+                    ? colorScheme.accent
+                    : colorScheme.text,
+                  border: `1px solid ${
+                    timingPanelOpen ? colorScheme.accent : "transparent"
+                  }`,
+                }}
+                title={
+                  timingPanelOpen ? "Close 8085 timing" : "Open 8085 timing"
+                }
+                aria-pressed={timingPanelOpen}
+              >
+                <VscPulse size={16} />
+                <span className="hidden xl:inline">Timing</span>
+              </button>
+            ) : null}
+
+            {architecture === "8085" && debugMode ? (
+              <div
+                className="flex items-center rounded border p-0.5"
+                style={{
+                  backgroundColor: colorScheme.panel,
+                  borderColor: colorScheme.border,
+                }}
+              >
+                {(["instruction", "machine-cycle"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => {
+                      clearPending8085Step();
+                      setDebugStepMode(mode);
+                    }}
+                    className="rounded px-1.5 py-1 text-[9px] font-medium transition-colors"
+                    style={{
+                      backgroundColor:
+                        debugStepMode === mode
+                          ? colorScheme.active
+                          : "transparent",
+                      color:
+                        debugStepMode === mode
+                          ? colorScheme.text
+                          : colorScheme.textMuted,
+                    }}
+                    title={
+                      mode === "instruction"
+                        ? "Step one instruction"
+                        : "Step one machine cycle"
+                    }
+                  >
+                    {mode === "instruction" ? "INST" : "M-CYCLE"}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {architecture === "8085" && debugMode ? (
+              <button
+                onClick={handleDebugBack}
+                disabled={isRunning || (debugCursor <= 0 && !hasPendingCycle)}
+                className="flex items-center rounded p-2 transition-opacity disabled:cursor-not-allowed disabled:opacity-35 sm:px-2.5 sm:py-1.5"
+                style={{
+                  backgroundColor: colorScheme.hover,
+                  color: colorScheme.text,
+                }}
+                title="Step backward"
+              >
+                <VscDebugStepBack size={16} />
+              </button>
+            ) : null}
+
             <button
               onClick={handleStep}
-              disabled={!execution.isAssembled || execution.isRunning}
+              disabled={!isAssembled || isRunning || executionComplete}
               className="flex items-center gap-1 rounded p-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-40 sm:gap-1.5 sm:px-3 sm:py-1.5"
               style={{
                 backgroundColor: colorScheme.hover,
                 color: colorScheme.text,
               }}
-              title="Step"
+              title={
+                architecture === "8085" &&
+                debugMode &&
+                debugStepMode === "machine-cycle"
+                  ? "Step one machine cycle"
+                  : "Step one instruction"
+              }
             >
               <VscDebugStepOver size={16} />
               <span className="hidden sm:inline">Step</span>
             </button>
+
+            {architecture === "8085" && debugMode ? (
+              <button
+                onClick={handleDebugForward}
+                disabled={isRunning || debugCursor >= debugHistoryLength}
+                className="flex items-center gap-1 rounded p-2 font-mono text-[10px] transition-opacity disabled:cursor-not-allowed disabled:opacity-35 sm:px-2.5 sm:py-1.5"
+                style={{
+                  backgroundColor: colorScheme.hover,
+                  color: colorScheme.text,
+                }}
+                title="Replay next recorded instruction"
+              >
+                <VscDebugContinueSmall size={16} />
+                <span className="hidden xl:inline">
+                  {debugCursor}/{debugHistoryLength}
+                </span>
+              </button>
+            ) : null}
 
             <button
               onClick={handleReset}
